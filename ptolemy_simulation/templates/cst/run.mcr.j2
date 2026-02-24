@@ -1,0 +1,8 @@
+Option Explicit
+
+Sub Main()
+	RunMacro("PTOLEMY_build")
+	RunSolveAndPostprocess
+End Sub
+
+{% include 'fragments/postprocess.mcs.j2' %}

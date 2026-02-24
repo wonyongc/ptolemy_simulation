@@ -1,0 +1,163 @@
+Sub SetBoundary()
+	With Boundary
+		.Xmin boundarytype
+		.Xmax boundarytype
+		.Ymin boundarytype
+		.Ymax boundarytype
+		.Zmin boundarytype
+		.Zmax boundarytype
+		.Xsymmetry "none"
+		.Ysymmetry "none"
+		.Zsymmetry "none"
+		.ApplyInAllDirections "True"
+	End With
+End Sub
+
+Sub SetBackground()
+	With Background
+		.ResetBackground
+		.XminSpace global_background_space_buffer
+		.XmaxSpace global_background_space_buffer
+		.YminSpace global_background_space_buffer
+		.YmaxSpace global_background_space_buffer
+		.ZminSpace zmin_background_space_buffer
+		.ZmaxSpace zmax_background_space_buffer
+		.ApplyInAllDirections "False"
+	End With
+End Sub
+
+Sub SetImportedFields()
+	If (Eimport = True Or Bimport = True) Then
+		With PredefinedField
+			.Reset
+			.FieldType "External"
+			.UseLocalCopyOnly "False"
+			.UpdateLocalCopies "False"
+			.ExternalFieldMur "1.0"
+{% if fields.importE %}
+			.SetExternalField "True", "field_se_e.m3d", "1.0", "0.0", "0", "False"
+			.SetExternalFieldDescription "0", "<mesh:hex><filename:field_se_e.m3d>"
+			.SetExternalFieldSpaceShift "0", "0.0", "0.0", "0.0"
+			.SetExternalFieldTimeSignal "0", "[Constant]"
+			.SetExternalFieldTimeShift "0", "0.0"
+{% endif %}
+{% if fields.importB %}
+			.SetExternalField "True", "field_sh_b.m3d", "1.0", "0.0", "1", "False"
+			.SetExternalFieldDescription "1", "<mesh:hex><filename:field_sh_b.m3d>"
+			.SetExternalFieldSpaceShift "1", "0.0", "0.0", "0.0"
+			.SetExternalFieldTimeSignal "1", "[Constant]"
+			.SetExternalFieldTimeShift "1", "0.0"
+{% endif %}
+			.Create
+		End With
+	End If
+End Sub
+
+Sub SetSolvers()
+	Mesh.SetCreator "Tracking"
+	Mesh.SetFlavor "Low Frequency"
+
+	With EStaticSolver
+		Mesh.SetCreator "Tracking"
+		.Method "Hexahedral Mesh"
+		.Accuracy "{{ solvers.e_static_accuracy }}"
+		.CalcCapacitanceMatrix "False"
+		.StoreResultsInCache "False"
+		.MeshAdaption "False"
+		.TetAdaption "False"
+		.UseMaxNumberOfThreads "True"
+		.MaxNumberOfThreads "{{ solvers.max_threads }}"
+		.MaximumNumberOfCPUDevices "{{ solvers.max_cpu_devices }}"
+		.UseDistributedComputing "False"
+	End With
+
+	With MStaticSolver
+		Mesh.SetCreator "Tracking"
+		.Method "Hexahedral Mesh"
+		.Accuracy "{{ solvers.m_static_accuracy }}"
+		.ApparentInductanceMatrix "False"
+		.IncrementalInductanceMatrix "False"
+		.StoreResultsInCache "False"
+		.MeshAdaption "False"
+		.PrecomputeStationaryCurrentSource "False"
+		.TetAdaption "False"
+		.UseMaxNumberOfThreads "True"
+		.MaxNumberOfThreads "{{ solvers.max_threads }}"
+		.MaximumNumberOfCPUDevices "{{ solvers.max_cpu_devices }}"
+		.UseDistributedComputing "False"
+	End With
+
+	With TrackingSolver
+		.StoreResultsInDataCache "False"
+		.Method "{{ tracking.method }}"
+		.SolverOrderTet "2"
+		.SetSimulationTime "{{ tracking.sim_time_ns }}"
+		.SetNumTimeIterations "{{ tracking.iterations }}"
+		.SetNeglectSpaceCharge "{{ "True" if tracking.neglect_space_charge else "False" }}"
+		.SetNeglectPECCharging "{{ "True" if tracking.neglect_PEC_charging else "False" }}"
+		.MaxTimeSteps max_time_steps
+		.SetTemporalDynamic "1"
+		.SetSpatialSamplingRate trajectory_spatial_sampling_per_mesh_step
+		.ConsiderSpacecharge "False"
+		.SetGunIteration "False"
+		If SaveTraj = False Then
+			.SetTrajectorySampling "TRAJECTORIES_DISABLED", ""
+		Else
+			.SetTrajectorySampling "FIXED", trajectory_sampling_step_frequency
+		End If
+		.AddTrackingSource "all sources", ""
+		If (Eimport = True Or Bimport = True) Then
+			.AddStaticsField "External", "1.0", "False"
+		End If
+		If ComputeE = True Then
+			.AddStaticsField "E-static", "1.0", "False"
+		End If
+		If ComputeB = True Then
+			.AddStaticsField "M-static", "1.0", "False"
+		End If
+		.DefaultBoundaryEstatic "normal"
+		.DefaultBoundaryMstatic boundarytype
+		.ParticleSurfaceLosses "False", "False", "True", "", "", "False"
+		.ParticleMerging "False", "100", "10"
+	End With
+	With TrackingSolver
+		.UseMaxNumberOfThreads "True"
+		.MaxNumberOfThreads "{{ tracking.threads }}"
+		.MaximumNumberOfCPUDevices "2"
+		.UseDistributedComputing "{{ "True" if tracking.distributed else "False" }}"
+	End With
+End Sub
+
+Sub SetPTTracking()
+	ChangeSolverType "PT Tracking"
+End Sub
+
+Sub SetPTMonitors()
+{% for mon in monitors %}
+	DeleteParticle2DMonitorIfExists "{{ mon.name }}"
+	With Particle2DMonitor
+		.Reset
+		.Name "{{ mon.name }}"
+		.NumPlanes "{{ mon.planes }}"
+		.NormalDirection "{% if mon.normal == 'x' %}0{% elif mon.normal == 'y' %}1{% else %}2{% endif %}"
+		.Limits "X", {{ mon.xlim[0] }}, {{ mon.xlim[1] }}
+		.Limits "Y", {{ mon.ylim[0] }}, {{ mon.ylim[1] }}
+		.Limits "Z", {{ mon.zlim[0] }}, {{ mon.zlim[1] }}
+		.TimeSettings "0", "1", "0", "False"
+		.Create
+	End With
+{% endfor %}
+End Sub
+
+Sub ApplyExclusions()
+	If magnetrun = False And {{ "True" if toggles.exclude_magnet_when_magnetrun_false else "False" }} Then
+{% for item in exclusions.solids %}
+		Group.AddItem "{{ item }}", "Excluded from Simulation"
+		Group.AddItem "{{ item }}", "Excluded from Bounding Box"
+{% endfor %}
+{% for item in exclusions.coils %}
+		Group.AddItem "{{ item }}", "Excluded from Simulation"
+		Group.AddItem "{{ item }}", "Excluded from Bounding Box"
+{% endfor %}
+	End If
+End Sub

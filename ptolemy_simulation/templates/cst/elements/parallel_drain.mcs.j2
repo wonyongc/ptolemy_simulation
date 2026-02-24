@@ -1,0 +1,37 @@
+{% for p in parallel_drains %}
+Sub {{ p.build_sub }}()
+{% for arc in p.arcs %}
+	With Polygon3D
+		.Reset
+		.Name "{{ arc.name }}_outline"
+		.Curve "{{ p.curve }}"
+{% for pt in arc.outline %}
+		.Point {{ pt.x }}, {{ pt.y }}, {{ pt.z }}
+{% endfor %}
+		.Create
+	End With
+	With Polygon3D
+		.Reset
+		.Name "{{ arc.name }}_profile"
+		.Curve "{{ p.curve }}"
+{% for pt in arc.profile %}
+		.Point {{ pt.x }}, {{ pt.y }}, {{ pt.z }}
+{% endfor %}
+		.Create
+	End With
+	MakeSweepCurve "{{ arc.name }}", "{{ p.component }}", "{{ p.material }}", "{{ p.curve }}:{{ arc.name }}_outline", "{{ p.curve }}:{{ arc.name }}_profile"
+	MirrorCopyY "{{ p.component }}:{{ arc.name }}"
+	MakeBrick "{{ arc.name }}_cutout", "{{ p.component }}", "Vacuum", -{{ p.x_half }}, {{ p.x_half }}, -({{ p.y_half }}+{{ p.thickness }}), ({{ p.y_half }}+{{ p.thickness }}), {{ p.cutout_z_min }}, {{ p.cutout_z_max }}
+	SolidSubtract "{{ p.component }}:{{ arc.name }}", "{{ p.component }}:{{ arc.name }}_cutout"
+	MakeBrick "{{ arc.name }}_cutout_mirror", "{{ p.component }}", "Vacuum", -{{ p.x_half }}, {{ p.x_half }}, -({{ p.y_half }}+{{ p.thickness }}), ({{ p.y_half }}+{{ p.thickness }}), {{ p.cutout_z_min }}, {{ p.cutout_z_max }}
+	SolidSubtract "{{ p.component }}:{{ arc.name }}_1", "{{ p.component }}:{{ arc.name }}_cutout_mirror"
+{% endfor %}
+End Sub
+
+Sub {{ p.apply_sub }}()
+{% for arc in p.arcs %}
+	MakePotential "{{ arc.name }}_pot", {{ arc.potential }}, "{{ p.component }}:{{ arc.name }}", "{{ arc.face }}"
+	MakePotential "{{ arc.name }}_pot_1", {{ arc.potential }}, "{{ p.component }}:{{ arc.name }}_1", "{{ arc.face }}"
+{% endfor %}
+End Sub
+{% endfor %}

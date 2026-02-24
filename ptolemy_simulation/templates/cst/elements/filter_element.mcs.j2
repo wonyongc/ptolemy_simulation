@@ -1,0 +1,13 @@
+{% for f in filter_elements %}
+Sub {{ f.build_sub }}()
+{% for brick in f.bricks %}
+	MakeBrick "{{ brick.name }}", "{{ f.component }}", "{{ brick.material }}", {{ brick.x1 }}, {{ brick.x2 }}, {{ brick.y1 }}, {{ brick.y2 }}, {{ brick.z1 }}, {{ brick.z2 }}
+{% endfor %}
+End Sub
+
+Sub {{ f.apply_sub }}()
+{% for pot in f.potentials %}
+	MakePotential "{{ pot.name }}", {{ pot.value }}, "{{ pot.solid }}", "{{ pot.face }}"
+{% endfor %}
+End Sub
+{% endfor %}

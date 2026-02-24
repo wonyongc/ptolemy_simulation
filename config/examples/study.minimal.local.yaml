@@ -1,0 +1,12 @@
+schema_version: "1.0"
+study_name: minimal_local
+detector_config: detector.minimal.yaml
+sim_config: sim.cst.minimal.yaml
+run_config: run.local.yaml
+output_root: generated/studies
+matrix: {}
+overrides:
+  detector: {}
+  sim:
+    /toggles/run_solver_after_build: true
+  run: {}

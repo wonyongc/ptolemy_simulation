@@ -1,0 +1,13 @@
+{% for lens in einzel_lenses %}
+Sub {{ lens.build_sub }}()
+{% for cyl in lens.cylinders %}
+	MakeCylinderZ "{{ cyl.name }}", "{{ lens.component }}", "PEC", {{ cyl.inner_r }}, {{ cyl.outer_r }}, {{ cyl.z1 }}, {{ cyl.z2 }}, 0, 0
+{% endfor %}
+End Sub
+
+Sub {{ lens.apply_sub }}()
+{% for cyl in lens.cylinders %}
+	MakePotential "{{ lens.ns }}_pot_{{ loop.index0 }}", {{ cyl.potential }}, "{{ lens.component }}:{{ cyl.name }}", "2"
+{% endfor %}
+End Sub
+{% endfor %}

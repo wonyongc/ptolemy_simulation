@@ -1,0 +1,167 @@
+Option Explicit
+
+Dim boundarytype As String
+Dim global_background_space_buffer, zmin_background_space_buffer, zmax_background_space_buffer As Double
+Dim max_time_steps, trajectory_sampling_step_frequency, trajectory_spatial_sampling_per_mesh_step As Integer
+Dim magnetrun, Eimport, Bimport, ComputeE, ComputeB, SaveTraj As Boolean
+Dim b_field_file, e_field_file As String
+
+Sub Main()
+	BuildAndConfigure
+End Sub
+
+Sub BuildAndConfigure()
+	InitParams
+	DefineMaterials
+	SetUnits
+	DefineComponents
+	BuildGeometry
+	ApplyGeometryVoltages
+	MakeMesh
+	SetBoundary
+	SetBackground
+	SetImportedFields
+	SetSolvers
+	SetPTTracking
+	SetPTMonitors
+	ApplyExclusions
+End Sub
+
+Sub InitParams()
+	boundarytype = "{{ boundary }}"
+	global_background_space_buffer = {{ background_buffer_xy_m }}
+	zmin_background_space_buffer = {{ background_buffer_zmin_m }}
+	zmax_background_space_buffer = {{ background_buffer_zmax_m }}
+
+	max_time_steps = {{ max_time_steps }}
+	trajectory_sampling_step_frequency = {{ tracking.traj_sampling.freq | default(100) }}
+	trajectory_spatial_sampling_per_mesh_step = {{ tracking.traj_sampling.per_mesh | default(100) }}
+	SaveTraj = {{ "True" if tracking.traj_sampling.save | default(False) else "False" }}
+
+	magnetrun = {{ "True" if fields.magnetrun else "False" }}
+	Eimport = {{ "True" if fields.importE else "False" }}
+	Bimport = {{ "True" if fields.importB else "False" }}
+	ComputeE = {{ "True" if fields.computeE else "False" }}
+	ComputeB = {{ "True" if fields.computeB else "False" }}
+	b_field_file = "{{ fields.b_field_file }}"
+	e_field_file = "{{ fields.e_field_file }}"
+End Sub
+
+Sub SetUnits()
+	With Units
+		.SetUnit "Length", "{{ units.length }}"
+		.SetUnit "Temperature", "degC"
+		.SetUnit "Voltage", "{{ units.voltage }}"
+		.SetUnit "Current", "A"
+		.SetUnit "Resistance", "Ohm"
+		.SetUnit "Conductance", "S"
+		.SetUnit "Capacitance", "pF"
+		.SetUnit "Inductance", "nH"
+		.SetUnit "Frequency", "GHz"
+		.SetUnit "Time", "{{ units.time }}"
+		.SetResultUnit "frequency", "frequency", ""
+	End With
+End Sub
+
+Sub DefineComponents()
+{% for component in components %}
+	On Error Resume Next
+	Component.New "{{ component }}"
+	Err.Clear
+	On Error GoTo 0
+{% endfor %}
+End Sub
+
+Sub BuildGeometry()
+{% for subname in build_calls %}
+	{{ subname }}
+{% endfor %}
+	BuildParticles
+End Sub
+
+Sub ApplyGeometryVoltages()
+{% for subname in voltage_calls %}
+	{{ subname }}
+{% endfor %}
+End Sub
+
+{% include 'elements/lngs_magnet.mcs.j2' %}
+{% include 'elements/target.mcs.j2' %}
+{% include 'elements/target_backplate_cutout.mcs.j2' %}
+{% include 'elements/einzel_lens.mcs.j2' %}
+{% include 'elements/electrostatic_analyzer.mcs.j2' %}
+{% include 'elements/parallel_drain.mcs.j2' %}
+{% include 'elements/filter_element.mcs.j2' %}
+
+Sub BuildParticles()
+{% for p in particles.singles %}
+	MakeParticle "{{ p.name }}", {{ p.pos[0] }}, {{ p.pos[1] }}, {{ p.pos[2] }}, {{ p.dir[0] }}, {{ p.dir[1] }}, {{ p.dir[2] }}, {{ p.energy }}
+{% endfor %}
+{% for r in particles.rings %}
+	With ParticleSource
+		.Reset
+		.Name "{{ r.name }}"
+		.ParticleType "electron"
+		.Charge "-1.602176634e-19"
+		.Mass "9.1093837015e-31"
+		.SourceType "Circle"
+		.UsePickCircle "False"
+		.CircleCenterPoint "{{ r.center[0] }}", "{{ r.center[1] }}", "{{ r.center[2] }}"
+		.CircleNormal "{{ r.normal[0] }}", "{{ r.normal[1] }}", "{{ r.normal[2] }}"
+		.CircleRadius {{ r.radius }}
+		.CircleRadiusInner {{ r.inner_radius }}
+		.CircleRadiusLines {{ r.lines }}
+		.CircleOblique {{ r.pitch }}, {{ r.phi }}
+		.RadialFunction "constant"
+		.TrkEmissionModel "Fixed"
+		.TrkKinetic "Energy", "Uniform", "{{ r.energy }}", "0", "{{ r.pitch_spread }}", "300", "100"
+		.TrkFixed "1", "CURRENT"
+		.Create
+	End With
+{% endfor %}
+End Sub
+
+Sub MakeMesh()
+	With Mesh
+		.MeshType "PBA"
+		.SetCreator "Tracking"
+	End With
+
+	With MeshSettings
+		.SetMeshType "Hex"
+		.Set "Version", 1%
+		.Set "MinStepGeometryX", {{ mesh.step_m }}
+		.Set "MinStepGeometryY", {{ mesh.step_m }}
+		.Set "MinStepGeometryZ", {{ mesh.step_m }}
+		.Set "UseSameMinStepGeometryXYZ", "1"
+	End With
+
+{% for box in mesh_boxes %}
+	Group.Add "{{ box.group }}", "mesh"
+	MakeBrick "{{ box.name }}", "mesh", "Vacuum", {{ box.bounds.x_min }}, {{ box.bounds.x_max }}, {{ box.bounds.y_min }}, {{ box.bounds.y_max }}, {{ box.bounds.z_min }}, {{ box.bounds.z_max }}
+	Group.AddItem "solid$mesh:{{ box.name }}", "{{ box.group }}"
+	Group.AddItem "solid$mesh:{{ box.name }}", "Excluded from Simulation"
+	Group.AddItem "solid$mesh:{{ box.name }}", "Excluded from Bounding Box"
+{% endfor %}
+
+	With MeshSettings
+{% for box in mesh_boxes %}
+		With .ItemMeshSettings("group${{ box.group }}")
+			.SetMeshType "Hex"
+			.Set "Extend", "0", "0", "0"
+			.Set "Step", {{ mesh.step_m }}, {{ mesh.step_m }}, {{ mesh.step_m }}
+			.Set "UseStepAndExtend", 1
+			.Set "UseSameExtendXYZ", 1
+			.Set "UseSameStepWidthXYZ", 0
+			.Set "UseForSnapping", 1
+			.Set "UseForRefinement", 1
+		End With
+{% endfor %}
+	End With
+End Sub
+
+{% include 'fragments/settings.mcs.j2' %}
+
+{% include 'fragments/helpers.mcs.j2' %}
+
+{% include 'fragments/materials.mcs.j2' %}

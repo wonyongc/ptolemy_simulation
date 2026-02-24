@@ -1,0 +1,540 @@
+{% set monitor_names = postprocess.monitor_names if postprocess.monitor_names else (monitors | map(attribute='name') | list) %}
+{% set trajectory_base = (postprocess.trajectory_filename | default('trajectories.csv')) | replace('.csv', '') | replace('.txt', '') %}
+{% set trajectory_e_field_result = postprocess.trajectory_e_field_result | default('field_se_e') %}
+{% set trajectory_potential_result = postprocess.trajectory_potential_result | default('field_se_phi') %}
+{% set trajectory_b_field_result = postprocess.trajectory_b_field_result | default('field_0_0_import_predefined_plot') %}
+{% set field_exports = postprocess.field_exports | default({}) %}
+{% set field_regions = field_exports.regions | default([]) %}
+{% set field_output_dir = field_exports.output_dir | default('results/fields') %}
+{% set field_e_field_result = field_exports.e_field_result | default('field_se_e') %}
+{% set field_potential_result = field_exports.potential_result | default('field_se_phi') %}
+{% set field_b_field_result = field_exports.b_field_result | default('field_0_0_import_predefined_plot') %}
+
+Sub RunSolveAndPostprocess()
+{% if toggles.run_solver_after_build %}
+	If Not WaitForTrackingSolver() Then
+		MsgBox "Tracking solver reported an error; skipping exports.", vbCritical
+		Exit Sub
+	End If
+{% endif %}
+{% if toggles.export_transmission %}
+	ExportTransmission
+{% endif %}
+{% if toggles.export_pitch_analysis %}
+	ExportPitchAnalysis
+{% endif %}
+{% if toggles.export_trajectories %}
+	ExportTrajectory
+{% endif %}
+{% if toggles.export_field_maps | default(False) %}
+	ExportFieldMaps
+{% endif %}
+End Sub
+
+{% if toggles.run_solver_after_build %}
+Function WaitForTrackingSolver() As Boolean
+	On Error GoTo SolverFailed
+
+	With TrackingSolver
+		.Start
+	End With
+
+	' In CST versions where status polling APIs are unavailable, Start blocks until completion.
+	WaitForTrackingSolver = True
+	Exit Function
+
+SolverFailed:
+	WaitForTrackingSolver = False
+End Function
+{% endif %}
+
+Sub ExportTransmission()
+	Dim monitorNames As Variant
+	Dim monitor As Variant
+	Dim n As Long
+	Dim i As Long
+	Dim z As Double
+	Dim avgE As Double
+	Dim pids As Variant
+	Dim pidCount As Long
+	Dim dict As Object
+	Dim outputDir As String
+	Dim outputPath As String
+
+	monitorNames = Array({% for name in monitor_names %}"{{ name }}"{% if not loop.last %}, {% endif %}{% endfor %})
+	outputDir = BuildOutputDir("{{ postprocess.output_dir | default('results') }}")
+	EnsureDirectoryExists outputDir
+	outputPath = outputDir & "\{{ postprocess.transmission_filename | default('transmission.txt') }}"
+
+	Open outputPath For Output As #1
+	For Each monitor In monitorNames
+		Particle2DMonitorReader.SelectMonitor(monitor)
+		For n = 0 To Particle2DMonitorReader.GetNPlanes()-1
+			Particle2DMonitorReader.SelectPlane(n)
+			z = Particle2DMonitorReader.GetPlaneDistance()
+
+			On Error Resume Next
+			pids = Particle2DMonitorReader.GetParticleIDs()
+			If Err.Number <> 0 Then
+				Err.Clear
+				On Error GoTo 0
+				Write #1, Round(z, 6), 0, 0
+				GoTo NextTransmissionPlane
+			End If
+			On Error GoTo 0
+
+			pidCount = VariantArrayLength(pids)
+			If pidCount <= 0 Then
+				Write #1, Round(z, 6), 0, 0
+				GoTo NextTransmissionPlane
+			End If
+
+			Set dict = CreateObject("Scripting.Dictionary")
+			For i = 0 To pidCount - 1
+				If Not dict.Exists(pids(i)) Then
+					dict.Add pids(i), 1
+				End If
+			Next
+
+			avgE = 0#
+			On Error Resume Next
+			avgE = Particle2DMonitorReader.GetQuantityWithReduction("Energy", "", "mean")
+			If Err.Number <> 0 Then
+				Err.Clear
+				avgE = 0#
+			End If
+			On Error GoTo 0
+
+			Write #1, Round(z, 6), dict.Count, avgE
+NextTransmissionPlane:
+		Next
+	Next
+	Close #1
+End Sub
+
+Sub ExportPitchAnalysis()
+	Dim monitorNames As Variant
+	Dim monitor As Variant
+	Dim n As Long
+	Dim i As Long
+	Dim z As Double
+	Dim pids As Variant
+	Dim pidCount As Long
+	Dim x As Variant
+	Dim y As Variant
+	Dim px As Variant
+	Dim py As Variant
+	Dim pz As Variant
+	Dim e As Variant
+	Dim outputDir As String
+	Dim outputPath As String
+
+	monitorNames = Array({% for name in monitor_names %}"{{ name }}"{% if not loop.last %}, {% endif %}{% endfor %})
+	outputDir = BuildOutputDir("{{ postprocess.output_dir | default('results') }}")
+	EnsureDirectoryExists outputDir
+	outputPath = outputDir & "\{{ postprocess.pitch_filename | default('pitchanalysis.txt') }}"
+
+	Open outputPath For Output As #1
+	For Each monitor In monitorNames
+		Particle2DMonitorReader.SelectMonitor(monitor)
+		For n = 0 To Particle2DMonitorReader.GetNPlanes()-1
+			Particle2DMonitorReader.SelectPlane(n)
+			z = Particle2DMonitorReader.GetPlaneDistance()
+
+			On Error Resume Next
+			pids = Particle2DMonitorReader.GetParticleIDs()
+			If Err.Number <> 0 Then
+				Err.Clear
+				On Error GoTo 0
+				GoTo NextPitchPlane
+			End If
+			On Error GoTo 0
+
+			pidCount = VariantArrayLength(pids)
+			If pidCount <= 0 Then
+				GoTo NextPitchPlane
+			End If
+
+			On Error Resume Next
+			x = Particle2DMonitorReader.GetPositionsX()
+			y = Particle2DMonitorReader.GetPositionsY()
+			px = Particle2DMonitorReader.GetMomentaX()
+			py = Particle2DMonitorReader.GetMomentaY()
+			pz = Particle2DMonitorReader.GetMomentaZ()
+			e = Particle2DMonitorReader.GetQuantityValues("Energy", "")
+			If Err.Number <> 0 Then
+				Err.Clear
+				On Error GoTo 0
+				GoTo NextPitchPlane
+			End If
+			On Error GoTo 0
+
+			For i = 0 To pidCount - 1
+				Write #1, Round(z, 6), pids(i), x(i), y(i), px(i), py(i), pz(i), e(i)
+			Next
+NextPitchPlane:
+		Next
+	Next
+	Close #1
+End Sub
+
+Function VariantArrayLength(values As Variant) As Long
+	On Error GoTo EmptyArray
+	VariantArrayLength = UBound(values) - LBound(values) + 1
+	Exit Function
+EmptyArray:
+	VariantArrayLength = 0
+End Function
+
+Sub ExportFieldMaps()
+	Dim projectPath As String
+	Dim baseOutputDir As String
+	Dim outputDir As String
+	Dim fileBase As String
+	Dim efield As Object
+	Dim bfield As Object
+	Dim potfield As Object
+
+	projectPath = ResolveProjectPath()
+	baseOutputDir = BuildOutputDir("{{ postprocess.output_dir | default('results') }}")
+	outputDir = BuildOutputDir("{{ field_output_dir }}")
+	fileBase = "{{ run_id }}"
+
+	EnsureDirectoryExists baseOutputDir
+	EnsureDirectoryExists outputDir
+
+	Set efield = Nothing
+	Set bfield = Nothing
+	Set potfield = Nothing
+
+	On Error Resume Next
+	Set efield = Result3D(WindowsPath(projectPath & "/Result/{{ field_e_field_result }}"))
+	Err.Clear
+	Set potfield = Result3D(WindowsPath(projectPath & "/Result/{{ field_potential_result }}"))
+	Err.Clear
+	Set bfield = Result3D(WindowsPath(projectPath & "/Result/{{ field_b_field_result }}"))
+	On Error GoTo 0
+
+{% for region in field_regions %}
+{% set region_name = region.name | default('region' ~ loop.index0) %}
+{% set x1 = region.x.start | default(region.x1 | default(0.0)) %}
+{% set x2 = region.x.stop | default(region.x2 | default(0.0)) %}
+{% set dx = region.x.step | default(region.dx | default(0.001)) %}
+{% set y1 = region.y.start | default(region.y1 | default(0.0)) %}
+{% set y2 = region.y.stop | default(region.y2 | default(0.0)) %}
+{% set dy = region.y.step | default(region.dy | default(0.001)) %}
+{% set z1 = region.z.start | default(region.z1 | default(0.0)) %}
+{% set z2 = region.z.stop | default(region.z2 | default(0.0)) %}
+{% set dz = region.z.step | default(region.dz | default(0.001)) %}
+{% if region.export_b | default(False) %}
+	ExportFieldRegion "B", outputDir, fileBase, "{{ region_name }}", _
+		{{ x1 }}, {{ x2 }}, {{ dx }}, _
+		{{ y1 }}, {{ y2 }}, {{ dy }}, _
+		{{ z1 }}, {{ z2 }}, {{ dz }}, _
+		bfield
+{% endif %}
+{% if region.export_e | default(False) %}
+	ExportFieldRegion "E", outputDir, fileBase, "{{ region_name }}", _
+		{{ x1 }}, {{ x2 }}, {{ dx }}, _
+		{{ y1 }}, {{ y2 }}, {{ dy }}, _
+		{{ z1 }}, {{ z2 }}, {{ dz }}, _
+		efield
+{% endif %}
+{% if region.export_potential | default(False) %}
+	ExportFieldRegion "POTENTIAL", outputDir, fileBase, "{{ region_name }}", _
+		{{ x1 }}, {{ x2 }}, {{ dx }}, _
+		{{ y1 }}, {{ y2 }}, {{ dy }}, _
+		{{ z1 }}, {{ z2 }}, {{ dz }}, _
+		potfield
+{% endif %}
+{% endfor %}
+End Sub
+
+Sub ExportFieldRegion(mode As String, outputDir As String, fileBase As String, regionName As String, _
+	x1 As Double, x2 As Double, dx As Double, _
+	y1 As Double, y2 As Double, dy As Double, _
+	z1 As Double, z2 As Double, dz As Double, _
+	fieldObj As Object)
+
+	Dim outPath As String
+	Dim suffix As String
+	Dim nx As Long
+	Dim ny As Long
+	Dim nz As Long
+	Dim ix As Long
+	Dim iy As Long
+	Dim iz As Long
+	Dim meshIndex As Long
+	Dim px As Double
+	Dim py As Double
+	Dim pz As Double
+	Dim ex As Double
+	Dim ey As Double
+	Dim ez As Double
+	Dim phi As Double
+	Dim bx As Double
+	Dim by As Double
+	Dim bz As Double
+
+	If dx <= 0# Or dy <= 0# Or dz <= 0# Then
+		Exit Sub
+	End If
+	If x2 < x1 Or y2 < y1 Or z2 < z1 Then
+		Exit Sub
+	End If
+
+	Select Case UCase(mode)
+		Case "B"
+			suffix = "_B"
+		Case "E"
+			suffix = "_E"
+		Case "POTENTIAL"
+			suffix = "_phi"
+		Case Else
+			Exit Sub
+	End Select
+
+	nx = CLng((x2 - x1) / dx + 0.5)
+	ny = CLng((y2 - y1) / dy + 0.5)
+	nz = CLng((z2 - z1) / dz + 0.5)
+
+	If Len(outputDir) > 0 Then
+		outPath = outputDir & "\" & fileBase & "_" & regionName & suffix & ".txt"
+	Else
+		outPath = fileBase & "_" & regionName & suffix & ".txt"
+	End If
+
+	Open outPath For Output As #1
+	Print #1, "# mode=" & UCase(mode)
+	Print #1, "# x_start=" & CStr(x1) & ",x_stop=" & CStr(x2) & ",dx=" & CStr(dx)
+	Print #1, "# y_start=" & CStr(y1) & ",y_stop=" & CStr(y2) & ",dy=" & CStr(dy)
+	Print #1, "# z_start=" & CStr(z1) & ",z_stop=" & CStr(z2) & ",dz=" & CStr(dz)
+	Select Case UCase(mode)
+		Case "B"
+			Print #1, "# bx,by,bz"
+		Case "E"
+			Print #1, "# ex,ey,ez"
+		Case "POTENTIAL"
+			Print #1, "# phi"
+	End Select
+	For ix = 0 To nx
+		px = x1 + CDbl(ix) * dx
+		For iy = 0 To ny
+			py = y1 + CDbl(iy) * dy
+			For iz = 0 To nz
+				pz = z1 + CDbl(iz) * dz
+				meshIndex = Mesh.GetClosestPtIndex(px, py, pz)
+
+				Select Case UCase(mode)
+					Case "B"
+						bx = 0#
+						by = 0#
+						bz = 0#
+						If Not fieldObj Is Nothing Then
+							bx = fieldObj.GetXRe(meshIndex)
+							by = fieldObj.GetYRe(meshIndex)
+							bz = fieldObj.GetZRe(meshIndex)
+						End If
+						Write #1, bx, by, bz
+					Case "E"
+						ex = 0#
+						ey = 0#
+						ez = 0#
+						If Not fieldObj Is Nothing Then
+							ex = fieldObj.GetXRe(meshIndex)
+							ey = fieldObj.GetYRe(meshIndex)
+							ez = fieldObj.GetZRe(meshIndex)
+						End If
+						Write #1, ex, ey, ez
+					Case "POTENTIAL"
+						phi = 0#
+						If Not fieldObj Is Nothing Then
+							phi = fieldObj.GetXRe(meshIndex)
+						End If
+						Write #1, phi
+				End Select
+			Next
+		Next
+	Next
+	Close #1
+End Sub
+
+Sub ExportTrajectory()
+	Dim outputDir As String
+	Dim projectPath As String
+	Dim fileBase As String
+	Dim outputBase As String
+	Dim outputPath As String
+	Dim combinedPath As String
+
+	Dim n As Long
+	Dim i As Long
+	Dim meshIndex As Long
+
+	Dim efield As Object
+	Dim bfield As Object
+	Dim pot As Object
+
+	Dim t() As Single
+	Dim x() As Single
+	Dim y() As Single
+	Dim z() As Single
+	Dim vx() As Single
+	Dim vy() As Single
+	Dim vz() As Single
+
+	Dim phi As Double
+	Dim ex As Double
+	Dim ey As Double
+	Dim ez As Double
+	Dim bx As Double
+	Dim by As Double
+	Dim bz As Double
+
+	projectPath = ResolveProjectPath()
+	outputDir = BuildOutputDir("{{ postprocess.output_dir | default('results') }}")
+	fileBase = "{{ run_id }}"
+	outputBase = "{{ trajectory_base }}"
+	combinedPath = outputDir & "\{{ postprocess.trajectory_filename | default('trajectories.csv') }}"
+
+	EnsureDirectoryExists outputDir
+
+	Set efield = Nothing
+	Set bfield = Nothing
+	Set pot = Nothing
+
+	On Error Resume Next
+	Set efield = Result3D(WindowsPath(projectPath & "/Result/{{ trajectory_e_field_result }}"))
+	Err.Clear
+	Set pot = Result3D(WindowsPath(projectPath & "/Result/{{ trajectory_potential_result }}"))
+	Err.Clear
+	Set bfield = Result3D(WindowsPath(projectPath & "/Result/{{ trajectory_b_field_result }}"))
+	On Error GoTo 0
+
+	ParticleTrajectoryReader.LoadTrajectoryData()
+	Open combinedPath For Output As #2
+	Print #2, "# traj_id,t,x,y,z,vx,vy,vz,phi,ex,ey,ez,bx,by,bz"
+
+	For n = 0 To ParticleTrajectoryReader.GetNTrajectories()-1
+		ParticleTrajectoryReader.SelectTrajectory(n)
+
+		t = ParticleTrajectoryReader.GetTimes()
+		x = ParticleTrajectoryReader.GetPositionsX()
+		y = ParticleTrajectoryReader.GetPositionsY()
+		z = ParticleTrajectoryReader.GetPositionsZ()
+
+		vx = ParticleTrajectoryReader.GetQuantityValues("Velocity", "X")
+		vy = ParticleTrajectoryReader.GetQuantityValues("Velocity", "Y")
+		vz = ParticleTrajectoryReader.GetQuantityValues("Velocity", "Z")
+
+		If Len(outputDir) > 0 Then
+			outputPath = outputDir & "\" & fileBase & "_" & outputBase & "_raw_" & CStr(n) & ".txt"
+		Else
+			outputPath = fileBase & "_" & outputBase & "_raw_" & CStr(n) & ".txt"
+		End If
+
+		Open outputPath For Output As #1
+		Print #1, "# t,x,y,z,vx,vy,vz,phi,ex,ey,ez,bx,by,bz"
+		For i = 0 To UBound(t)
+			meshIndex = Mesh.GetClosestPtIndex(x(i), y(i), z(i))
+
+			phi = 0#
+			ex = 0#
+			ey = 0#
+			ez = 0#
+			bx = 0#
+			by = 0#
+			bz = 0#
+
+			If Not pot Is Nothing Then
+				phi = pot.GetXRe(meshIndex)
+			End If
+			If Not efield Is Nothing Then
+				ex = efield.GetXRe(meshIndex)
+				ey = efield.GetYRe(meshIndex)
+				ez = efield.GetZRe(meshIndex)
+			End If
+			If Not bfield Is Nothing Then
+				bx = bfield.GetXRe(meshIndex)
+				by = bfield.GetYRe(meshIndex)
+				bz = bfield.GetZRe(meshIndex)
+			End If
+
+			Write #1, t(i), x(i), y(i), z(i), vx(i), vy(i), vz(i), phi, ex, ey, ez, bx, by, bz
+			Write #2, n, t(i), x(i), y(i), z(i), vx(i), vy(i), vz(i), phi, ex, ey, ez, bx, by, bz
+		Next
+		Close #1
+	Next
+	Close #2
+End Sub
+
+Function WindowsPath(pathValue As String) As String
+	WindowsPath = Replace(pathValue, "/", "\")
+End Function
+
+Function ResolveProjectPath() As String
+	Dim projectPath As String
+	projectPath = ""
+
+	On Error Resume Next
+	projectPath = CStr(GetProjectPath("Project"))
+	If Err.Number <> 0 Then
+		Err.Clear
+		projectPath = CStr(GetProjectPath)
+	End If
+	If Err.Number <> 0 Then
+		Err.Clear
+		projectPath = CStr(CurDir$)
+	End If
+	On Error GoTo 0
+
+	ResolveProjectPath = WindowsPath(projectPath)
+End Function
+
+Function BuildOutputDir(relativePath As String) As String
+	Dim projectPath As String
+	projectPath = ResolveProjectPath()
+	If Len(relativePath) = 0 Then
+		BuildOutputDir = projectPath
+	Else
+		BuildOutputDir = WindowsPath(projectPath & "\" & relativePath)
+	End If
+End Function
+
+Sub EnsureDirectoryExists(dirPath As String)
+	Dim normalized As String
+	Dim parts() As String
+	Dim current As String
+	Dim i As Long
+	Dim fso As Object
+
+	normalized = WindowsPath(dirPath)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If fso.FolderExists(normalized) Then
+		Exit Sub
+	End If
+
+	parts = Split(normalized, "\")
+	If UBound(parts) < 0 Then
+		Exit Sub
+	End If
+
+	current = parts(0)
+	If InStr(current, ":") > 0 Then
+		current = current & "\"
+	End If
+
+	For i = 1 To UBound(parts)
+		If Len(parts(i)) = 0 Then
+			' Skip empty segments.
+		Else
+			If Len(current) > 0 And Right(current, 1) <> "\" Then
+				current = current & "\"
+			End If
+			current = current & parts(i)
+			If Not fso.FolderExists(current) Then
+				fso.CreateFolder current
+			End If
+		End If
+	Next
+End Sub

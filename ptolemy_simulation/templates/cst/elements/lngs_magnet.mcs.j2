@@ -1,0 +1,175 @@
+{% for m in magnets %}
+Sub {{ m.build_sub }}()
+	Dim curveName As String
+	Dim matName As String
+	curveName = "magnet_curve_{{ m.ns }}"
+	matName = "{{ m.material }}"
+
+	With Polygon3D
+		.Reset
+		.Name "lngs_cross_section_{{ m.ns }}"
+		.Curve curveName
+		.Point 1.25, 0.3, 0
+		.Point 1.25, -1.1, 0
+		.Point 1.05, -1.3, 0
+		.Point -1.05, -1.3, 0
+		.Point -1.25, -1.1, 0
+		.Point -1.25, 0.3, 0
+		.Point -0.075, 0.3, 0
+		.Point -0.075, -0.3, 0
+		.Point -0.65, -0.3, 0
+		.Point -0.65, -0.5, 0
+		.Point -0.45, -0.70, 0
+		.Point 0.45, -0.70, 0
+		.Point 0.65, -0.5, 0
+		.Point 0.65, -0.3, 0
+		.Point 0.075, -0.3, 0
+		.Point 0.075, 0.3, 0
+		.Point 1.25, 0.3, 0
+		.Create
+	End With
+	With Polygon3D
+		.Reset
+		.Name "lngs_profile_{{ m.ns }}"
+		.Curve curveName
+		.Point 0, 0, 0
+		.Point 0, 0, -1
+		.Create
+	End With
+
+	With Polygon3D
+		.Reset
+		.Name "lngs_horn_cross_section_{{ m.ns }}"
+		.Curve curveName
+		.Point 1.25, 0.3, 0
+		.Point 1.25, 0.3, 0.65
+		.Point 1, 0.3, 0.65
+		.Point 0.65, 0.3, 0
+		.Point 1.25, 0.3, 0
+		.Create
+	End With
+	With Polygon3D
+		.Reset
+		.Name "lngs_horn_profile_{{ m.ns }}"
+		.Curve curveName
+		.Point 1.25, 0.3, 0
+		.Point 1.25, -0.3, 0
+		.Create
+	End With
+
+	MakeSweepCurve "lngs_magnet_{{ m.ns }}", "{{ m.component }}", matName, _
+		curveName & ":lngs_cross_section_{{ m.ns }}", curveName & ":lngs_profile_{{ m.ns }}"
+
+	MakeSweepCurve "lngs_magnet_horn_{{ m.ns }}", "{{ m.component }}", matName, _
+		curveName & ":lngs_horn_cross_section_{{ m.ns }}", curveName & ":lngs_horn_profile_{{ m.ns }}"
+
+	With Transform
+		.Reset
+		.Name "{{ m.component }}:lngs_magnet_horn_{{ m.ns }}"
+		.Origin "Free"
+		.Center "0", "0", "0"
+		.PlaneNormal "1", "0", "0"
+		.MultipleObjects "True"
+		.GroupObjects "False"
+		.Repetitions "1"
+		.MultipleSelection "False"
+		.Destination ""
+		.Material ""
+		.AutoDestination "True"
+		.Transform "Shape", "Mirror"
+	End With
+
+	Solid.Add "{{ m.component }}:lngs_magnet_{{ m.ns }}", "{{ m.component }}:lngs_magnet_horn_{{ m.ns }}"
+	Solid.Add "{{ m.component }}:lngs_magnet_{{ m.ns }}", "{{ m.component }}:lngs_magnet_horn_{{ m.ns }}_1"
+
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "30", "22"
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "29", "18"
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "26", "19"
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "51", "36"
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "53", "35"
+	Pick.PickEdgeFromId "{{ m.component }}:lngs_magnet_{{ m.ns }}", "54", "38"
+
+	Solid.ChamferEdge "0.05", "45", "False", "23"
+
+	' --- Coil definition (LNGS target style) ---
+	Dim coilCurve As String
+	coilCurve = "coil_curve_{{ m.ns }}"
+
+	With Polygon3D
+		.Reset
+		.Name "coil_cross_section_{{ m.ns }}"
+		.Curve coilCurve
+		.Point "0.36", "0", "0.065"
+		.Point "0.54", "0", "0.065"
+		.Point "0.54", "0", "0.069"
+		.Point "0.36", "0", "0.069"
+		.Point "0.36", "0", "0.065"
+		.Create
+	End With
+
+	With Polygon3D
+		.Reset
+		.Name "coil_path_{{ m.ns }}"
+		.Curve coilCurve
+		.Point "0.45", "0.452", "0.062"
+		.Point "0.45", "0.452", "-1.062"
+		.Point "0.45", "-0.452", "-1.062"
+		.Point "0.45", "-0.452", "0.062"
+		.Point "0.45", "0.452", "0.062"
+		.Create
+	End With
+
+	Pick.PickCurveEndpointFromId coilCurve & ":coil_path_{{ m.ns }}", "2"
+	Pick.PickCurveEndpointFromId coilCurve & ":coil_path_{{ m.ns }}", "1"
+	Pick.PickCurveEndpointFromId coilCurve & ":coil_path_{{ m.ns }}", "4"
+	Pick.PickCurveEndpointFromId coilCurve & ":coil_path_{{ m.ns }}", "3"
+
+	With BlendCurve
+		.Reset
+		.Name "blend1_{{ m.ns }}"
+		.Radius "0.15"
+		.UsePickedPoints
+		.Create
+	End With
+
+	With Coil
+		.Reset
+		.Name "coil1_{{ m.ns }}"
+		.Type "Coil"
+		.OperationMode "Current"
+		.ConductorModel "Stranded"
+		.ToolType "CurveCurve"
+		.Value 72000
+		.Phase "0.0"
+		.NTurns "1"
+		.Resistance "0.0"
+		.NStrands "120"
+		.StrandDiameter "0.05"
+		.LengthExtension "1.2"
+		.CurrentDirection "Inverted"
+		.ProjectProfileToPathAdvanced "True"
+		.ProfileName coilCurve & ":coil_cross_section_{{ m.ns }}"
+		.PathName coilCurve & ":coil_path_{{ m.ns }}"
+		.Create
+	End With
+
+	With Transform
+		.Reset
+		.Name "coil1_{{ m.ns }}"
+		.Origin "Free"
+		.Center "0", "0", "0"
+		.PlaneNormal "1", "0", "0"
+		.MultipleObjects "True"
+		.GroupObjects "False"
+		.Repetitions "1"
+		.MultipleSelection "False"
+		.Destination ""
+		.Material ""
+		.Transform "Coil", "Mirror"
+	End With
+End Sub
+
+Sub ApplyVoltages_{{ m.ns }}()
+	' Magnet has no electrostatic potentials.
+End Sub
+{% endfor %}

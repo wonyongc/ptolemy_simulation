@@ -1,0 +1,34 @@
+{% for t in targets %}
+Sub {{ t.build_sub }}()
+	MakeCylinderX "{{ t.ns }}_pm_target", "{{ t.component }}", "PEC", 0.0, {{ t.magnet_radius }}, {{ t.center_x }}-{{ t.thickness }}, {{ t.center_x }}+{{ t.thickness }}, 0, {{ t.center_z }}
+	MakeCylinderX "{{ t.ns }}_target_cylinder", "{{ t.component }}", "PEC", {{ t.magnet_radius }}+2*{{ t.thickness }}, {{ t.magnet_radius }}+3*{{ t.thickness }}, {{ t.center_x }}-{{ t.thickness }}, {{ t.center_x }}+{{ t.magnet_height }}, 0, {{ t.center_z }}
+	MakeCylinderX "{{ t.ns }}_catcher", "{{ t.component }}", "PEC", {{ t.magnet_radius }}+5*{{ t.thickness }}, {{ t.magnet_radius }}+7*{{ t.thickness }}, {{ t.center_x }}-{{ t.thickness }}, {{ t.center_x }}+{{ t.thickness }}, 0, {{ t.center_z }}
+	MakeCylinderX "{{ t.ns }}_catcher_pcb", "{{ t.component }}", "Epoxy resin", 0, {{ t.magnet_radius }}+8*{{ t.thickness }}, {{ t.center_x }}-2*{{ t.thickness }}, {{ t.center_x }}+10*{{ t.magnet_height }}, 0, {{ t.center_z }}
+	MakeCylinderX "{{ t.ns }}_catcher_pcb_cutout", "{{ t.component }}", "Vacuum", 0, {{ t.magnet_radius }}+7*{{ t.thickness }}, {{ t.center_x }}-{{ t.thickness }}, {{ t.center_x }}+10*{{ t.magnet_height }}, 0, {{ t.center_z }}
+
+	With Magnet
+		.Reset
+		.Name "{{ t.ns }}_perm_magnet"
+		.SetMagnetType "Constant"
+		.Remanence {{ t.remanence }}
+		.MagDir "1", "0", "0"
+		.InverseDir "False"
+		.Face "{{ t.component }}:{{ t.ns }}_pm_target", "2"
+		.Transformable "True"
+		.Create
+	End With
+
+	RotateCommonCenterY "{{ t.component }}:{{ t.ns }}_pm_target", {{ t.rotation_deg }}
+	RotateFreeCenterY "{{ t.component }}:{{ t.ns }}_target_cylinder", {{ t.rotation_deg }}, {{ t.center_x }}, 0, {{ t.center_z }}
+	RotateFreeCenterY "{{ t.component }}:{{ t.ns }}_catcher", {{ t.rotation_deg }}, {{ t.center_x }}, 0, {{ t.center_z }}
+	RotateFreeCenterY "{{ t.component }}:{{ t.ns }}_catcher_pcb", {{ t.rotation_deg }}, {{ t.center_x }}, 0, {{ t.center_z }}
+	RotateFreeCenterY "{{ t.component }}:{{ t.ns }}_catcher_pcb_cutout", {{ t.rotation_deg }}, {{ t.center_x }}, 0, {{ t.center_z }}
+	SolidSubtract "{{ t.component }}:{{ t.ns }}_catcher_pcb", "{{ t.component }}:{{ t.ns }}_catcher_pcb_cutout"
+End Sub
+
+Sub {{ t.apply_sub }}()
+	MakePotential "{{ t.ns }}_pot_base", {{ t.voltages.inner }}, "{{ t.component }}:{{ t.ns }}_pm_target", "2"
+	MakePotential "{{ t.ns }}_pot_inner", {{ t.voltages.inner }}, "{{ t.component }}:{{ t.ns }}_target_cylinder", "2"
+	MakePotential "{{ t.ns }}_pot_catcher", {{ t.voltages.catcher }}, "{{ t.component }}:{{ t.ns }}_catcher", "2"
+End Sub
+{% endfor %}

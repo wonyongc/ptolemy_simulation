@@ -1,0 +1,11 @@
+schema_version: "1.0"
+study_name: ptolemy_della
+detector_config: detector.ptolemy_full.yaml
+sim_config: sim.cst.ptolemy.yaml
+run_config: run.della.yaml
+output_root: generated/studies
+matrix: {}
+overrides:
+  detector: {}
+  sim: {}
+  run: {}

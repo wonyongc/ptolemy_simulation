@@ -1,0 +1,56 @@
+{% for a in analyzers %}
+Sub {{ a.build_sub }}()
+	MakeBrick "{{ a.ns }}_plate", "{{ a.component }}", "Epoxy resin", {{ a.pcb.x_min }}, {{ a.pcb.x_max }}, {{ a.pcb.y_min }}, {{ a.pcb.y_max }}, {{ a.pcb.z1 }}, {{ a.pcb.z2 }}
+	MakeBrick "{{ a.ns }}_plate_entrance_cutout", "{{ a.component }}", "Vacuum", -{{ a.pcb.entrance_slit.dx }}/2, {{ a.pcb.entrance_slit.dx }}/2, -{{ a.pcb.entrance_slit.dy }}/2, {{ a.pcb.entrance_slit.dy }}/2, {{ a.pcb.z1 }}, {{ a.pcb.z2 }}
+	SolidSubtract "{{ a.component }}:{{ a.ns }}_plate", "{{ a.component }}:{{ a.ns }}_plate_entrance_cutout"
+	MakeBrick "{{ a.ns }}_plate_exit_cutout", "{{ a.component }}", "Vacuum", -{{ a.pcb.exit_slit.dx }}/2, {{ a.pcb.exit_slit.dx }}/2, {{ a.exit_y }}-{{ a.pcb.exit_slit.dy }}/2, {{ a.exit_y }}+{{ a.pcb.exit_slit.dy }}/2, {{ a.pcb.z1 }}, {{ a.pcb.z2 }}
+	SolidSubtract "{{ a.component }}:{{ a.ns }}_plate", "{{ a.component }}:{{ a.ns }}_plate_exit_cutout"
+
+	With Sphere
+		.Reset
+		.Name "{{ a.ns }}_inner"
+		.Component "{{ a.component }}"
+		.Material "PEC"
+		.Axis "z"
+		.CenterRadius "{{ a.inner_r }}"
+		.TopRadius "0"
+		.BottomRadius "{{ a.inner_r }}"
+		.Center "0", "{{ a.center_y }}", "{{ a.center_z }}"
+		.Segments "0"
+		.Create
+	End With
+
+	With Sphere
+		.Reset
+		.Name "{{ a.ns }}_outer"
+		.Component "{{ a.component }}"
+		.Material "PEC"
+		.Axis "z"
+		.CenterRadius "{{ a.outer_shell_r }}"
+		.TopRadius "0"
+		.BottomRadius "{{ a.outer_shell_r }}"
+		.Center "0", "{{ a.center_y }}", "{{ a.center_z }}"
+		.Segments "0"
+		.Create
+	End With
+	With Sphere
+		.Reset
+		.Name "{{ a.ns }}_outer_cut"
+		.Component "{{ a.component }}"
+		.Material "Vacuum"
+		.Axis "z"
+		.CenterRadius "{{ a.outer_r }}"
+		.TopRadius "0"
+		.BottomRadius "{{ a.outer_r }}"
+		.Center "0", "{{ a.center_y }}", "{{ a.center_z }}"
+		.Segments "0"
+		.Create
+	End With
+	SolidSubtract "{{ a.component }}:{{ a.ns }}_outer", "{{ a.component }}:{{ a.ns }}_outer_cut"
+End Sub
+
+Sub {{ a.apply_sub }}()
+	MakePotential "{{ a.ns }}_pot_inner", {{ a.voltages.inner }}, "{{ a.component }}:{{ a.ns }}_inner", "2"
+	MakePotential "{{ a.ns }}_pot_outer", {{ a.voltages.outer }}, "{{ a.component }}:{{ a.ns }}_outer", "2"
+End Sub
+{% endfor %}

@@ -1,0 +1,179 @@
+
+Sub DeleteSolidIfExists(fullName As String)
+	On Error Resume Next
+	Solid.Delete fullName
+	Err.Clear
+	On Error GoTo 0
+End Sub
+
+Sub DeleteParticleSourceIfExists(name As String)
+	On Error Resume Next
+	ParticleSource.Delete name
+	Err.Clear
+	On Error GoTo 0
+End Sub
+
+Sub DeleteParticle2DMonitorIfExists(name As String)
+	On Error Resume Next
+	Particle2DMonitor.Delete name
+	Err.Clear
+	On Error GoTo 0
+End Sub
+
+Sub MakeBrick(name As String, comp As String, mat As String, x1 As Double, x2 As Double, y1 As Double, y2 As Double, z1 As Double, z2 As Double)
+	DeleteSolidIfExists comp & ":" & name
+	With Brick
+		.Reset
+		.Name name
+		.Component comp
+		.Material mat
+		.Xrange x1, x2
+		.Yrange y1, y2
+		.Zrange z1, z2
+		.Create
+	End With
+End Sub
+
+Sub MakeCylinderX(name As String, comp As String, mat As String, Rin As Double, Rout As Double, x1 As Double, x2 As Double, ycenter As Double, zcenter As Double)
+	DeleteSolidIfExists comp & ":" & name
+	With Cylinder
+		.Reset
+		.Name name
+		.Component comp
+		.Material mat
+		.InnerRadius Rin
+		.OuterRadius Rout
+		.Axis "x"
+		.Xrange x1, x2
+		.Ycenter ycenter
+		.Zcenter zcenter
+		.Segments "0"
+		.Create
+	End With
+End Sub
+
+Sub MakeCylinderZ(name As String, comp As String, mat As String, Rin As Double, Rout As Double, z1 As Double, z2 As Double, xcenter As Double, ycenter As Double)
+	DeleteSolidIfExists comp & ":" & name
+	With Cylinder
+		.Reset
+		.Name name
+		.Component comp
+		.Material mat
+		.InnerRadius Rin
+		.OuterRadius Rout
+		.Axis "z"
+		.Zrange z1, z2
+		.Xcenter xcenter
+		.Ycenter ycenter
+		.Segments "0"
+		.Create
+	End With
+End Sub
+
+Sub MakePotential(name As String, value As Double, solidname As String, face As String)
+	With Potential
+		.Reset
+		.Name name
+		.Value value
+		.Phase "0"
+		.AddFace solidname, face
+		.Type "Fixed"
+		.Create
+	End With
+End Sub
+
+Sub MakeParticle(name As String, px As Double, py As Double, pz As Double, nx As Double, ny As Double, nz As Double, energy As Double)
+	DeleteParticleSourceIfExists name
+	With ParticleSource
+		.Reset
+		.Name name
+		.ParticleType "electron"
+		.Charge "-1.602176565e-19"
+		.Mass "9.1093810e-31"
+		.SourceType "SinglePoint"
+		.UsePickPoint "False"
+		.StartPoint px, py, pz
+		.StartNormal nx, ny, nz
+		.StartArea "1e-9"
+		.TrkEmissionModel "Fixed"
+		.TrkKinetic "Energy", "Uniform", energy, "0", "0", "300", "100"
+		.TrkFixed "1", "CURRENT"
+		.Create
+	End With
+End Sub
+
+Sub MakeSweepCurve(name As String, comp As String, mat As String, cross_section As String, profile As String)
+	DeleteSolidIfExists comp & ":" & name
+	With SweepCurve
+		.Reset
+		.Name name
+		.Component comp
+		.Material mat
+		.Twistangle "0.0"
+		.Taperangle "0.0"
+		.ProjectProfileToPathAdvanced "True"
+		.CutEndOff "True"
+		.DeleteProfile "True"
+		.DeletePath "True"
+		.Path profile
+		.Curve cross_section
+		.Create
+	End With
+End Sub
+
+Sub MirrorCopyY(solidname As String)
+	With Transform
+		.Reset
+		.Name solidname
+		.Origin "Free"
+		.Center "0", "0", "0"
+		.PlaneNormal "0", "1", "0"
+		.MultipleObjects "True"
+		.GroupObjects "False"
+		.Repetitions "1"
+		.MultipleSelection "False"
+		.Destination ""
+		.Material ""
+		.AutoDestination "True"
+		.CopyAttached "Magnets"
+		.Transform "Shape", "Mirror"
+	End With
+End Sub
+
+Sub RotateCommonCenterY(solidname As String, theta As Double)
+	With Transform
+		.Reset
+		.Name solidname
+		.Origin "CommonCenter"
+		.Center "0", "0", "0"
+		.Angle "0", theta, "0"
+		.MultipleObjects "False"
+		.GroupObjects "False"
+		.Repetitions "1"
+		.MultipleSelection "False"
+		.AutoDestination "True"
+		.Transform "Shape", "Rotate"
+	End With
+End Sub
+
+Sub RotateFreeCenterY(solidname As String, theta As Double, cx As Double, cy As Double, cz As Double)
+	With Transform
+		.Reset
+		.Name solidname
+		.Origin "Free"
+		.Center cx, cy, cz
+		.Angle "0", theta, "0"
+		.MultipleObjects "False"
+		.GroupObjects "False"
+		.Repetitions "1"
+		.MultipleSelection "False"
+		.AutoDestination "True"
+		.Transform "Shape", "Rotate"
+	End With
+End Sub
+
+Sub SolidSubtract(target As String, tool As String)
+	With Solid
+		.Subtract target, tool
+	End With
+End Sub

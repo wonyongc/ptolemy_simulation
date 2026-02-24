@@ -1,0 +1,41 @@
+schema_version: "1.0"
+experiment:
+  name: minimal_detector
+constants:
+  v_base: 10000
+profiles:
+  bx:
+    file: data/lngs_3perm_asym_Bx.txt
+    normalize: true
+geometry:
+  - id: minimal_filter
+    type: filter_element
+    component: filter_min
+    z_span_m: [-0.01, 0.01]
+    x_half_m: 0.05
+    y_half_m: 0.015
+    pcb_thickness_m: 0.001
+    electrode_thickness_m: 0.0
+    electrode_len_m: 0.01
+    electrode_gap_m: 0.002
+    end_gap_m: 0.0
+    channels_x: 1
+    channel_gap_m: 0.0
+    channel_width_ratios: [1]
+    corner_gap_m: 0.001
+    voltages:
+      bounce_xpos: "v_base"
+      bounce_xneg: "v_base"
+      channels_mode: uniform
+      pos_y: "v_base"
+      neg_y: "v_base"
+
+sources:
+  singles:
+    - name_prefix: center
+      pitches: [0]
+      phis: [0]
+      energy_eV: 10000
+      on_target_face: false
+      origin_m: [0.0, 0.0, 0.0]
+  rings: []

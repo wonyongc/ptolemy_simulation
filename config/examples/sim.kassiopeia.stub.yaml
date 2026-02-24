@@ -1,0 +1,4 @@
+schema_version: "1.0"
+simulator: kassiopeia
+toggles:
+  run_solver_after_build: false

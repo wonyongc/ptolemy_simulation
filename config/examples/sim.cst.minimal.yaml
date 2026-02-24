@@ -1,0 +1,79 @@
+schema_version: "1.0"
+simulator: cst
+units:
+  length: m
+  voltage: V
+  time: ns
+boundary: open
+background:
+  xy_mm: 10
+  zmin_mm: 10
+  zmax_mm: 10
+mesh:
+  step_mm: 1
+  buffer_mm: 0
+max_time_steps: 1000
+fields:
+  magnetrun: false
+  computeE: true
+  computeB: false
+  importE: false
+  importB: false
+  b_field_file: ""
+  e_field_file: ""
+tracking:
+  method: Hexahedral
+  sim_time_ns: 5
+  iterations: 10000
+  neglect_space_charge: true
+  neglect_PEC_charging: true
+  threads: 16
+  distributed: false
+  traj_sampling:
+    freq: 100
+    per_mesh: 100
+    save: true
+solvers:
+  e_static_accuracy: "1e-12"
+  m_static_accuracy: "1e-12"
+  max_threads: 16
+  max_cpu_devices: 2
+monitors:
+  - name: monitor1
+    planes: 11
+    normal: z
+    xlim: [-0.05, 0.05]
+    ylim: [-0.015, 0.015]
+    zlim: [-0.01, 0.01]
+exclusions:
+  solids:
+    - "solid$magnet:lngs_magnet"
+  coils:
+    - "coil$coil1"
+    - "coil$coil1_1"
+postprocess:
+  monitor_names: []
+  output_dir: results
+  transmission_filename: transmission.txt
+  pitch_filename: pitchanalysis.txt
+  trajectory_filename: trajectories.csv
+  field_exports:
+    output_dir: results/fields
+    e_field_result: field_se_e
+    potential_result: field_se_phi
+    b_field_result: field_0_0_import_predefined_plot
+    regions:
+      - name: wide
+        x: {start: -0.05, stop: 0.05, step: 0.005}
+        y: {start: -0.015, stop: 0.015, step: 0.005}
+        z: {start: -0.01, stop: 0.01, step: 0.005}
+        export_b: true
+        export_e: true
+        export_potential: true
+toggles:
+  exclude_magnet_when_magnetrun_false: true
+  run_solver_after_build: true
+  export_transmission: true
+  export_pitch_analysis: true
+  export_trajectories: true
+  export_field_maps: true
