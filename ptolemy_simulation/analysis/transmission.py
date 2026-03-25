@@ -1,4 +1,4 @@
-"""Transmission analysis routines."""
+"""Transmission analysis"""
 
 from __future__ import annotations
 

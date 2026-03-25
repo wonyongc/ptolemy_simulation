@@ -1,4 +1,4 @@
-"""Staging and submission for local and Della targets."""
+"""Staging and submission for local and della targets."""
 
 from __future__ import annotations
 

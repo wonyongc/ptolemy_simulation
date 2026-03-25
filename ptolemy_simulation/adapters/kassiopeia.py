@@ -1,4 +1,4 @@
-"""Kassiopeia adapter stub output."""
+"""Kassiopeia adapter stub"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from ptolemy_simulation.pipeline.models import CompileArtifact, RunVariant
 
 
 class KassiopeiaAdapter(Adapter):
-    """Validated stub for future Kassiopeia adapter completion."""
+    """Stub for future Kassiopeia adapter completion."""
 
     name = "kassiopeia"
 
@@ -23,7 +23,7 @@ class KassiopeiaAdapter(Adapter):
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             "<kassiopeia_stub>\n"
             f"  <run id=\"{variant.run_id}\"/>\n"
-            "  <note>This is a validated adapter stub. Full Kassiopeia generation is not implemented.</note>\n"
+            "  <note>This is an adapter stub. Full Kassiopeia generation is not yet implemented.</note>\n"
             f"  <geometry_elements count=\"{len(variant.detector.get('geometry', []))}\"/>\n"
             "</kassiopeia_stub>\n"
         )
@@ -33,7 +33,7 @@ class KassiopeiaAdapter(Adapter):
             "simulator": self.name,
             "run_id": variant.run_id,
             "status": "stub",
-            "warning": "Kassiopeia output is a non-physics stub placeholder.",
+            "warning": "Kassiopeia output is a stub placeholder.",
             "files": {"xml": str(xml_path)},
         }
         manifest_path.write_text(json.dumps(manifest, indent=2))

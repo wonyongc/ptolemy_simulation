@@ -1,4 +1,4 @@
-"""Pitch analysis plotting."""
+"""Pitch analysis plotting"""
 
 from __future__ import annotations
 

@@ -8,5 +8,5 @@ matrix: {}
 overrides:
   detector: {}
   sim:
-    /toggles/run_solver_after_build: true
+    /toggles/run_solver_after_build: false
   run: {}

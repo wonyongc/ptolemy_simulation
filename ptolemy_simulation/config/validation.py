@@ -10,7 +10,6 @@ from .errors import ValidationError
 ALLOWED_GEOMETRY_TYPES = {
     "lngs_magnet",
     "target",
-    "target_backplate_cutout",
     "filter_element",
     "parallel_drain",
     "einzel_lens",
@@ -74,17 +73,33 @@ def validate_detector(data: Dict[str, Any]) -> Dict[str, Any]:
             _require_keys(
                 item,
                 [
-                    "z_span_m",
+                    "n_electrodes_inclusive",
                     "x_half_m",
                     "y_half_m",
-                    "pcb_thickness_m",
-                    "electrode_len_m",
-                    "electrode_gap_m",
                     "channels_x",
                     "voltages",
                 ],
                 f"detector.geometry[{idx}]",
             )
+
+    filter_defaults = payload.get("filter_element_defaults", {})
+    filter_defaults = _require_mapping(filter_defaults, "detector.filter_element_defaults")
+    has_filter = any(e.get("type") == "filter_element" for e in geometry)
+    if has_filter:
+        _require_keys(
+            filter_defaults,
+            [
+                "filter_start_z_m",
+                "pcb_thickness_m",
+                "electrode_thickness_m",
+                "electrode_len_m",
+                "electrode_gap_m",
+                "channel_gap_m",
+                "corner_gap_m",
+            ],
+            "detector.filter_element_defaults",
+        )
+    payload["filter_element_defaults"] = filter_defaults
 
     constants = payload.get("constants", {})
     constants_map = _require_mapping(constants, "detector.constants")

@@ -20,14 +20,26 @@ constants:
   z_accel_end_pos: -1.009275
   z_accel_end_neg: -0.649275
   z_lambda_start: -0.409275
+
 profiles:
   bx:
     file: data/lngs_3perm_asym_Bx.txt
     normalize: true
+
+filter_element_defaults:
+  filter_start_z_m: -1.557275
+  pcb_thickness_m: 0.001
+  electrode_thickness_m: 0.0
+  electrode_len_m: 0.016
+  electrode_gap_m: 0.004
+  channel_gap_m: 0.001
+  corner_gap_m: 0.001
+
 geometry:
   - id: lngs_magnet
     type: lngs_magnet
     component: magnet
+    material: Iron-PEC
 
   - id: target
     type: target
@@ -41,16 +53,6 @@ geometry:
     remanence_T: 1.5255
     voltage_inner: 18600
     voltage_catcher: 19000
-
-  - id: target_backplate_cutout
-    type: target_backplate_cutout
-    component: target
-    catchz_m: -1.302
-    filter_dimension_half_x_m: 0.055
-    filter_dimension_half_y_m: 0.060
-    electrode_thickness_m: 0.001
-    bring_cutout_y_m: 0.020
-    bring_cutout_z_m: -1.102
 
   - id: parallel_drain
     type: parallel_drain
@@ -73,26 +75,17 @@ geometry:
     x_half_m: 0.055
     y_half_m: 0.020
     cutout_z_span_m: [-1.802, -1.302]
+    material: PEC
 
   - id: filter_injection
     type: filter_element
     component: filter_injection
-    z_span_m: [-1.551275, -1.421275]
-    bounce_xpos_z_span_m: [-1.551275, -1.421275]
-    bounce_xneg_z_span_m: [-1.491275, -1.421275]
-    channel_ypos_z_span_m: [-1.551275, -1.421275]
-    channel_yneg_z_span_m: [-1.551275, -1.421275]
+    n_electrodes_inclusive: [0, 6]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.020
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.13
-    electrode_gap_m: 0.0
-    end_gap_m: 0.004
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
       bounce_xpos: "injection_bounce"
       bounce_xneg: "injection_bounce"
@@ -100,145 +93,177 @@ geometry:
       pos_y_channels: ["2500", "2600", "2700", "3300", "4000"]
       neg_y_channels: ["-2500", "-2400", "-2300", "-1700", "-1000"]
 
-  - id: filter_stage1
+  # Stage 1a: acceleration ramp (z(n) < z_accel_end_pos)
+  - id: filter_stage1a
     type: filter_element
     component: filter_stage1
-    z_span_m: [-1.417275, 0.642725]
-    bounce_xpos_z_span_m: [-1.417275, 0.578725]
-    bounce_xneg_z_span_m: [-1.417275, 0.578725]
-    channel_ypos_z_span_m: [-1.417275, 0.642725]
-    channel_yneg_z_span_m: [-1.417275, 0.642725]
+    n_electrodes_inclusive: [7, 26]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.020
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.016
-    electrode_gap_m: 0.004
-    end_gap_m: 0.0
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
-      bounce_xpos: "injection_bounce if z < z_accel_end_neg else injection_bounce*(bx_norm(z)**0.5)"
-      bounce_xneg: "injection_bounce if z < z_accel_end_neg else injection_bounce*(bx_norm(z)**0.5)"
+      bounce_xpos: "injection_bounce"
+      bounce_xneg: "injection_bounce"
       channels_mode: asymmetric
       pos_y_channels:
-        - "vscale5 * (bx_norm(z)**(1 + (lambda_target-1)*max(0,min(1,(z - z0_filter)/(z_accel_end_pos - z0_filter))))) if z < z_accel_end_pos else (vscale5 * (bx_norm(z)**lambda_target)) if z < z_lambda_start else (vscale5 * (bx_norm(z)**lambda_post))"
-        - "vscale4 * (bx_norm(z)**(1 + (lambda_target-1)*max(0,min(1,(z - z0_filter)/(z_accel_end_pos - z0_filter))))) if z < z_accel_end_pos else (vscale4 * (bx_norm(z)**lambda_target)) if z < z_lambda_start else (vscale4 * (bx_norm(z)**lambda_post))"
-        - "vscale3 * (bx_norm(z)**(1 + (lambda_target-1)*max(0,min(1,(z - z0_filter)/(z_accel_end_pos - z0_filter))))) if z < z_accel_end_pos else (vscale3 * (bx_norm(z)**lambda_target)) if z < z_lambda_start else (vscale3 * (bx_norm(z)**lambda_post))"
-        - "vscale2 * (bx_norm(z)**(1 + (lambda_target-1)*max(0,min(1,(z - z0_filter)/(z_accel_end_pos - z0_filter))))) if z < z_accel_end_pos else (vscale2 * (bx_norm(z)**lambda_target)) if z < z_lambda_start else (vscale2 * (bx_norm(z)**lambda_post))"
-        - "vscale1 * (bx_norm(z)**(1 + (lambda_target-1)*max(0,min(1,(z - z0_filter)/(z_accel_end_pos - z0_filter))))) if z < z_accel_end_pos else (vscale1 * (bx_norm(z)**lambda_target)) if z < z_lambda_start else (vscale1 * (bx_norm(z)**lambda_post))"
+        - "vscale5 * (bx_norm(z(n))**(1 + (lambda_target-1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_pos - z0_filter)))))"
+        - "vscale4 * (bx_norm(z(n))**(1 + (lambda_target-1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_pos - z0_filter)))))"
+        - "vscale3 * (bx_norm(z(n))**(1 + (lambda_target-1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_pos - z0_filter)))))"
+        - "vscale2 * (bx_norm(z(n))**(1 + (lambda_target-1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_pos - z0_filter)))))"
+        - "vscale1 * (bx_norm(z(n))**(1 + (lambda_target-1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_pos - z0_filter)))))"
       neg_y_channels:
-        - "inj_base_ch0 + ((-offset*vscale5*bx_norm(z)) - inj_base_ch0)*max(0,min(1,(z - z0_filter)/(z_accel_end_neg - z0_filter))) if z < z_accel_end_neg else (-offset*vscale5*bx_norm(z)) if z < z_lambda_start else (-offset*vscale5*(bx_norm(z)**lambda_post))"
-        - "inj_base_ch1 + ((-offset*vscale4*bx_norm(z)) - inj_base_ch1)*max(0,min(1,(z - z0_filter)/(z_accel_end_neg - z0_filter))) if z < z_accel_end_neg else (-offset*vscale4*bx_norm(z)) if z < z_lambda_start else (-offset*vscale4*(bx_norm(z)**lambda_post))"
-        - "inj_base_ch2 + ((-offset*vscale3*bx_norm(z)) - inj_base_ch2)*max(0,min(1,(z - z0_filter)/(z_accel_end_neg - z0_filter))) if z < z_accel_end_neg else (-offset*vscale3*bx_norm(z)) if z < z_lambda_start else (-offset*vscale3*(bx_norm(z)**lambda_post))"
-        - "inj_base_ch3 + ((-offset*vscale2*bx_norm(z)) - inj_base_ch3)*max(0,min(1,(z - z0_filter)/(z_accel_end_neg - z0_filter))) if z < z_accel_end_neg else (-offset*vscale2*bx_norm(z)) if z < z_lambda_start else (-offset*vscale2*(bx_norm(z)**lambda_post))"
-        - "inj_base_ch4 + ((-offset*vscale1*bx_norm(z)) - inj_base_ch4)*max(0,min(1,(z - z0_filter)/(z_accel_end_neg - z0_filter))) if z < z_accel_end_neg else (-offset*vscale1*bx_norm(z)) if z < z_lambda_start else (-offset*vscale1*(bx_norm(z)**lambda_post))"
+        - "inj_base_ch0 + ((-offset*vscale5*bx_norm(z(n))) - inj_base_ch0)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch1 + ((-offset*vscale4*bx_norm(z(n))) - inj_base_ch1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch2 + ((-offset*vscale3*bx_norm(z(n))) - inj_base_ch2)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch3 + ((-offset*vscale2*bx_norm(z(n))) - inj_base_ch3)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch4 + ((-offset*vscale1*bx_norm(z(n))) - inj_base_ch4)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+
+  # Stage 1b: target-lambda transport (z_accel_end_pos <= z(n) < z_accel_end_neg)
+  - id: filter_stage1b
+    type: filter_element
+    component: filter_stage1
+    n_electrodes_inclusive: [27, 44]
+    include_termination_backplate: false
+    x_half_m: 0.055
+    y_half_m: 0.020
+    channels_x: 5
+    channel_width_ratios: [1, 1, 1, 1, 1]
+    voltages:
+      bounce_xpos: "injection_bounce"
+      bounce_xneg: "injection_bounce"
+      channels_mode: asymmetric
+      pos_y_channels:
+        - "vscale5 * (bx_norm(z(n))**lambda_target)"
+        - "vscale4 * (bx_norm(z(n))**lambda_target)"
+        - "vscale3 * (bx_norm(z(n))**lambda_target)"
+        - "vscale2 * (bx_norm(z(n))**lambda_target)"
+        - "vscale1 * (bx_norm(z(n))**lambda_target)"
+      neg_y_channels:
+        - "inj_base_ch0 + ((-offset*vscale5*bx_norm(z(n))) - inj_base_ch0)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch1 + ((-offset*vscale4*bx_norm(z(n))) - inj_base_ch1)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch2 + ((-offset*vscale3*bx_norm(z(n))) - inj_base_ch2)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch3 + ((-offset*vscale2*bx_norm(z(n))) - inj_base_ch3)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+        - "inj_base_ch4 + ((-offset*vscale1*bx_norm(z(n))) - inj_base_ch4)*max(0,min(1,(z(n) - z0_filter)/(z_accel_end_neg - z0_filter)))"
+
+  # Stage 1c: target-lambda drift (z_accel_end_neg <= z(n) < z_lambda_start)
+  - id: filter_stage1c
+    type: filter_element
+    component: filter_stage1
+    n_electrodes_inclusive: [45, 56]
+    include_termination_backplate: false
+    x_half_m: 0.055
+    y_half_m: 0.020
+    channels_x: 5
+    channel_width_ratios: [1, 1, 1, 1, 1]
+    voltages:
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
+      channels_mode: asymmetric
+      pos_y_channels:
+        - "vscale5 * (bx_norm(z(n))**lambda_target)"
+        - "vscale4 * (bx_norm(z(n))**lambda_target)"
+        - "vscale3 * (bx_norm(z(n))**lambda_target)"
+        - "vscale2 * (bx_norm(z(n))**lambda_target)"
+        - "vscale1 * (bx_norm(z(n))**lambda_target)"
+      neg_y_channels:
+        - "-offset*vscale5*bx_norm(z(n))"
+        - "-offset*vscale4*bx_norm(z(n))"
+        - "-offset*vscale3*bx_norm(z(n))"
+        - "-offset*vscale2*bx_norm(z(n))"
+        - "-offset*vscale1*bx_norm(z(n))"
+
+  # Stage 1d: post-lambda transport (z(n) >= z_lambda_start)
+  - id: filter_stage1d
+    type: filter_element
+    component: filter_stage1
+    n_electrodes_inclusive: [57, 109]
+    include_termination_backplate: false
+    x_half_m: 0.055
+    y_half_m: 0.020
+    channels_x: 5
+    channel_width_ratios: [1, 1, 1, 1, 1]
+    voltages:
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
+      channels_mode: asymmetric
+      pos_y_channels:
+        - "vscale5 * (bx_norm(z(n))**lambda_post)"
+        - "vscale4 * (bx_norm(z(n))**lambda_post)"
+        - "vscale3 * (bx_norm(z(n))**lambda_post)"
+        - "vscale2 * (bx_norm(z(n))**lambda_post)"
+        - "vscale1 * (bx_norm(z(n))**lambda_post)"
+      neg_y_channels:
+        - "-offset*vscale5*(bx_norm(z(n))**lambda_post)"
+        - "-offset*vscale4*(bx_norm(z(n))**lambda_post)"
+        - "-offset*vscale3*(bx_norm(z(n))**lambda_post)"
+        - "-offset*vscale2*(bx_norm(z(n))**lambda_post)"
+        - "-offset*vscale1*(bx_norm(z(n))**lambda_post)"
 
   - id: filter_stage2
     type: filter_element
     component: filter_stage2
-    z_span_m: [0.582725, 0.842725]
-    bounce_xpos_z_span_m: [0.582725, 0.778725]
-    bounce_xneg_z_span_m: [0.582725, 0.778725]
-    channel_ypos_z_span_m: [0.582725, 0.842725]
-    channel_yneg_z_span_m: [0.582725, 0.842725]
+    n_electrodes_inclusive: [107, 119]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.030
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.016
-    electrode_gap_m: 0.004
-    end_gap_m: 0.0
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
-      bounce_xpos: "injection_bounce*(bx_norm(z)**0.5)"
-      bounce_xneg: "injection_bounce*(bx_norm(z)**0.5)"
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
       channels_mode: uniform
-      pos_y: "vscale3*(bx_norm(z)**lambda_post)"
-      neg_y: "-offset*vscale3*(bx_norm(z)**lambda_post)"
+      pos_y: "vscale3*(bx_norm(z(n))**lambda_post)"
+      neg_y: "-offset*vscale3*(bx_norm(z(n))**lambda_post)"
 
   - id: filter_stage3
     type: filter_element
     component: filter_stage3
-    z_span_m: [0.782725, 1.042725]
-    bounce_xpos_z_span_m: [0.782725, 0.978725]
-    bounce_xneg_z_span_m: [0.782725, 0.978725]
-    channel_ypos_z_span_m: [0.782725, 1.042725]
-    channel_yneg_z_span_m: [0.782725, 1.042725]
+    n_electrodes_inclusive: [117, 129]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.040
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.016
-    electrode_gap_m: 0.004
-    end_gap_m: 0.0
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
-      bounce_xpos: "injection_bounce*(bx_norm(z)**0.5)"
-      bounce_xneg: "injection_bounce*(bx_norm(z)**0.5)"
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
       channels_mode: uniform
-      pos_y: "vscale3*(bx_norm(z)**lambda_post)"
-      neg_y: "-offset*vscale3*(bx_norm(z)**lambda_post)"
+      pos_y: "vscale3*(bx_norm(z(n))**lambda_post)"
+      neg_y: "-offset*vscale3*(bx_norm(z(n))**lambda_post)"
 
   - id: filter_stage4
     type: filter_element
     component: filter_stage4
-    z_span_m: [0.982725, 1.242725]
-    bounce_xpos_z_span_m: [0.982725, 1.178725]
-    bounce_xneg_z_span_m: [0.982725, 1.178725]
-    channel_ypos_z_span_m: [0.982725, 1.242725]
-    channel_yneg_z_span_m: [0.982725, 1.242725]
+    n_electrodes_inclusive: [127, 139]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.050
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.016
-    electrode_gap_m: 0.004
-    end_gap_m: 0.0
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
-      bounce_xpos: "injection_bounce*(bx_norm(z)**0.5)"
-      bounce_xneg: "injection_bounce*(bx_norm(z)**0.5)"
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
       channels_mode: uniform
-      pos_y: "vscale3*(bx_norm(z)**lambda_post)"
-      neg_y: "-offset*vscale3*(bx_norm(z)**lambda_post)"
+      pos_y: "vscale3*(bx_norm(z(n))**lambda_post)"
+      neg_y: "-offset*vscale3*(bx_norm(z(n))**lambda_post)"
 
   - id: filter_stage5
     type: filter_element
     component: filter_stage5
-    z_span_m: [1.182725, 1.442725]
-    bounce_xpos_z_span_m: [1.182725, 1.378725]
-    bounce_xneg_z_span_m: [1.182725, 1.378725]
-    channel_ypos_z_span_m: [1.182725, 1.442725]
-    channel_yneg_z_span_m: [1.182725, 1.442725]
+    n_electrodes_inclusive: [137, 149]
+    include_termination_backplate: false
     x_half_m: 0.055
     y_half_m: 0.060
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.016
-    electrode_gap_m: 0.004
-    end_gap_m: 0.0
     channels_x: 5
     channel_width_ratios: [1, 1, 1, 1, 1]
-    channel_gap_m: 0.001
-    corner_gap_m: 0.001
     voltages:
-      bounce_xpos: "injection_bounce*(bx_norm(z)**0.5)"
-      bounce_xneg: "injection_bounce*(bx_norm(z)**0.5)"
+      bounce_xpos: "injection_bounce*(bx_norm(z(n))**0.5)"
+      bounce_xneg: "injection_bounce*(bx_norm(z(n))**0.5)"
       channels_mode: uniform
-      pos_y: "vscale3*(bx_norm(z)**lambda_post)"
-      neg_y: "-offset*vscale3*(bx_norm(z)**lambda_post)"
+      pos_y: "vscale3*(bx_norm(z(n))**lambda_post)"
+      neg_y: "-offset*vscale3*(bx_norm(z(n))**lambda_post)"
 
   - id: einzel
     type: einzel_lens
@@ -258,6 +283,7 @@ geometry:
     outer_radius_m: 0.0759
     shell_thickness_m: 0.001
     pcb_thickness_m: 0.001
+    center_z_m: 1.567725
     x_span_m: [-0.08, 0.08]
     y_span_m: [-0.07, 0.15]
     entrance_slit_mm: [1, 8]
@@ -273,6 +299,7 @@ sources:
       phis: [0]
       energy_eV: 18600
       on_target_face: true
+  rings: []
   # rings:
   #   - name_prefix: ring
   #     radii_m: [0.0045, 0.0055]

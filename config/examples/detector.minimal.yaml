@@ -7,22 +7,24 @@ profiles:
   bx:
     file: data/lngs_3perm_asym_Bx.txt
     normalize: true
+filter_element_defaults:
+  filter_start_z_m: -0.01
+  pcb_thickness_m: 0.001
+  electrode_thickness_m: 0.0
+  electrode_len_m: 0.01
+  electrode_gap_m: 0.002
+  channel_gap_m: 0.0
+  corner_gap_m: 0.001
 geometry:
   - id: minimal_filter
     type: filter_element
     component: filter_min
-    z_span_m: [-0.01, 0.01]
+    n_electrodes_inclusive: [0, 0]
+    include_termination_backplate: false
     x_half_m: 0.05
     y_half_m: 0.015
-    pcb_thickness_m: 0.001
-    electrode_thickness_m: 0.0
-    electrode_len_m: 0.01
-    electrode_gap_m: 0.002
-    end_gap_m: 0.0
     channels_x: 1
-    channel_gap_m: 0.0
     channel_width_ratios: [1]
-    corner_gap_m: 0.001
     voltages:
       bounce_xpos: "v_base"
       bounce_xneg: "v_base"

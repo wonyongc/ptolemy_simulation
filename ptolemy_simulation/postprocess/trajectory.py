@@ -1,4 +1,4 @@
-"""Trajectory conversion and GCS reduction."""
+"""Trajectory conversion and GCS reduction"""
 
 from __future__ import annotations
 

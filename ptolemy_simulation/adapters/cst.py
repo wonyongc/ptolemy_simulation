@@ -38,9 +38,9 @@ def pitch_list_from_cfg(cfg: Dict[str, Any]) -> List[float]:
         return [float(p) for p in cfg["pitches"]]
     if "pitch_range" in cfg:
         pr = cfg["pitch_range"]
-        start = float(pr.get("start_deg", 0.0))
-        stop = float(pr.get("stop_deg", start))
-        step = float(pr.get("step_deg", 1.0))
+        start = float(pr["start_deg"])
+        stop = float(pr["stop_deg"])
+        step = float(pr["step_deg"])
         vals: List[float] = []
         v = start
         while v <= stop + 1e-9:
@@ -55,17 +55,17 @@ def phi_list_from_cfg(cfg: Dict[str, Any]) -> List[float]:
         return [float(p) for p in cfg["phis"]]
     if "phi_deg" in cfg:
         return [float(cfg["phi_deg"])]
-    return [0.0]
+    return []
 
 
 def load_bx_profile(profile_cfg: Dict[str, Any], base_dir: Path | None = None) -> Callable[[float], float]:
     if not profile_cfg:
         return lambda _z: 1.0
 
-    file_path = Path(profile_cfg.get("file", "data/lngs_3perm_asym_Bx.txt"))
+    file_path = Path(profile_cfg["file"])
     if not file_path.is_absolute() and base_dir is not None:
         file_path = (base_dir / file_path).resolve()
-    normalize = bool(profile_cfg.get("normalize", True))
+    normalize = bool(profile_cfg["normalize"])
     try:
         data = np.loadtxt(file_path)
     except OSError:
@@ -106,23 +106,14 @@ EVAL_FUNCS = {
 }
 
 
-def eval_expr(expr: Optional[str], z_m: float, ctx: Dict[str, Any]) -> float:
+def eval_expr(expr: Optional[str], n: int, ctx: Dict[str, Any]) -> float:
     if not expr:
         return 0.0
 
     env: Dict[str, Any] = {}
     env.update(EVAL_FUNCS)
     env.update(ctx)
-    env["z"] = z_m
-    env["z_mm"] = z_m * 1000.0
-
-    def _piecewise_wrapper(pairs: List[Tuple[float, float, float]], default: float = 0.0):
-        for z0, z1, value in pairs:
-            if z0 <= z_m <= z1:
-                return value
-        return default
-
-    env["piecewise"] = _piecewise_wrapper
+    env["n"] = n
     return float(eval(expr, {"__builtins__": {}}, env))
 
 
@@ -202,7 +193,7 @@ class Voltages:
 
     @classmethod
     def from_config(cls, data: Dict[str, Any], channels_x: int) -> "Voltages":
-        channels_mode = str(data.get("channels_mode", "uniform"))
+        channels_mode = str(data["channels_mode"])
         if channels_mode not in {"uniform", "asymmetric"}:
             raise ValueError("channels_mode must be 'uniform' or 'asymmetric'")
 
@@ -215,8 +206,8 @@ class Voltages:
                 raise ValueError("neg_y_channels length mismatch")
 
         return cls(
-            bounce_xpos=data.get("bounce_xpos", data.get("bounce")),
-            bounce_xneg=data.get("bounce_xneg", data.get("bounce")),
+            bounce_xpos=data["bounce_xpos"],
+            bounce_xneg=data["bounce_xneg"],
             channels_mode=channels_mode,
             pos_y=data.get("pos_y"),
             neg_y=data.get("neg_y"),
@@ -239,17 +230,10 @@ class Voltages:
 class FilterSection:
     id: str
     component: str
+    n_start: int
     z_start_mm: int
     z_end_mm: int
-    backplate_pcb: bool
-    bounce_xpos_z_start_mm: Optional[int]
-    bounce_xpos_z_end_mm: Optional[int]
-    bounce_xneg_z_start_mm: Optional[int]
-    bounce_xneg_z_end_mm: Optional[int]
-    channel_ypos_z_start_mm: Optional[int]
-    channel_ypos_z_end_mm: Optional[int]
-    channel_yneg_z_start_mm: Optional[int]
-    channel_yneg_z_end_mm: Optional[int]
+    include_termination_backplate: bool
     y_half_mm: int
     x_half_mm: int
     electrode_len_mm: int
@@ -260,64 +244,52 @@ class FilterSection:
     channel_gap_mm: int
     corner_gap_mm: int
     channel_width_ratios: List[float]
-    end_gap_mm: int
     voltages: Voltages
 
     @classmethod
-    def from_geometry(cls, element: Dict[str, Any]) -> "FilterSection":
-        def mm_field(key: str, default: float = 0.0) -> int:
-            return mm_from_m(float(element.get(key, default)))
+    def from_geometry(cls, element: Dict[str, Any], defaults: Dict[str, Any]) -> "FilterSection":
+        def resolve(key: str) -> float:
+            if key in element:
+                return float(element[key])
+            return float(defaults[key])
 
-        def parse_span(span_val: Any, label: str) -> Tuple[int, int]:
-            if not isinstance(span_val, (list, tuple)) or len(span_val) != 2:
-                raise ValueError(f"{label} must be [start, end]")
-            return mm_from_m(float(span_val[0])), mm_from_m(float(span_val[1]))
+        n_span = element["n_electrodes_inclusive"]
+        if not isinstance(n_span, (list, tuple)) or len(n_span) != 2:
+            raise ValueError("n_electrodes_inclusive must be [n_start, n_end]")
+        n_start, n_end = int(n_span[0]), int(n_span[1])
+        if n_end < n_start:
+            raise ValueError("n_electrodes_inclusive end must be >= start")
 
-        def optional_span(span_key: str, start_key: str, end_key: str) -> Tuple[Optional[int], Optional[int]]:
-            if span_key in element:
-                return parse_span(element[span_key], span_key)
-            if start_key in element or end_key in element:
-                if start_key not in element or end_key not in element:
-                    raise ValueError(f"Both {start_key} and {end_key} required")
-                return mm_from_m(float(element[start_key])), mm_from_m(float(element[end_key]))
-            return None, None
+        filter_start_z_m = float(defaults["filter_start_z_m"])
+        electrode_len_m = resolve("electrode_len_m")
+        electrode_gap_m = resolve("electrode_gap_m")
+        unit_size_m = electrode_len_m + electrode_gap_m
 
-        z_start, z_end = parse_span(element["z_span_m"], "z_span_m")
-        bxp_s, bxp_e = optional_span("bounce_xpos_z_span_m", "bounce_xpos_z_start_m", "bounce_xpos_z_end_m")
-        bxn_s, bxn_e = optional_span("bounce_xneg_z_span_m", "bounce_xneg_z_start_m", "bounce_xneg_z_end_m")
-        cyp_s, cyp_e = optional_span("channel_ypos_z_span_m", "channel_ypos_z_start_m", "channel_ypos_z_end_m")
-        cyn_s, cyn_e = optional_span("channel_yneg_z_span_m", "channel_yneg_z_start_m", "channel_yneg_z_end_m")
+        z_start_m = filter_start_z_m + n_start * unit_size_m
+        z_end_m = filter_start_z_m + (n_end + 1) * unit_size_m
 
-        channels_x = int(element.get("channels_x", 1))
-        ratios_raw = element.get("channel_width_ratios", [])
+        channels_x = int(element["channels_x"])
+        ratios_raw = element["channel_width_ratios"]
         ratios = [float(v) for v in ratios_raw] if ratios_raw else []
 
         return cls(
             id=str(element["id"]),
-            component=str(element.get("component", element["id"])),
-            z_start_mm=z_start,
-            z_end_mm=z_end,
-            backplate_pcb=bool(element.get("backplate_pcb", False)),
-            bounce_xpos_z_start_mm=bxp_s,
-            bounce_xpos_z_end_mm=bxp_e,
-            bounce_xneg_z_start_mm=bxn_s,
-            bounce_xneg_z_end_mm=bxn_e,
-            channel_ypos_z_start_mm=cyp_s,
-            channel_ypos_z_end_mm=cyp_e,
-            channel_yneg_z_start_mm=cyn_s,
-            channel_yneg_z_end_mm=cyn_e,
-            y_half_mm=mm_field("y_half_m"),
-            x_half_mm=mm_field("x_half_m"),
-            electrode_len_mm=mm_field("electrode_len_m"),
-            electrode_gap_mm=mm_field("electrode_gap_m"),
-            electrode_thickness_mm=mm_field("electrode_thickness_m", 0.0),
-            pcb_thickness_mm=mm_field("pcb_thickness_m"),
+            component=str(element["component"]),
+            n_start=n_start,
+            z_start_mm=mm_from_m(z_start_m),
+            z_end_mm=mm_from_m(z_end_m),
+            include_termination_backplate=bool(element["include_termination_backplate"]),
+            y_half_mm=mm_from_m(float(element["y_half_m"])),
+            x_half_mm=mm_from_m(float(element["x_half_m"])),
+            electrode_len_mm=mm_from_m(electrode_len_m),
+            electrode_gap_mm=mm_from_m(electrode_gap_m),
+            electrode_thickness_mm=mm_from_m(resolve("electrode_thickness_m")),
+            pcb_thickness_mm=mm_from_m(resolve("pcb_thickness_m")),
             channels_x=channels_x,
-            channel_gap_mm=mm_field("channel_gap_m", 0.001),
-            corner_gap_mm=mm_field("corner_gap_m", 0.001),
+            channel_gap_mm=mm_from_m(resolve("channel_gap_m")),
+            corner_gap_mm=mm_from_m(resolve("corner_gap_m")),
             channel_width_ratios=ratios,
-            end_gap_mm=mm_field("end_gap_m", element.get("electrode_gap_m", 0.0)),
-            voltages=Voltages.from_config(element.get("voltages", {}), channels_x),
+            voltages=Voltages.from_config(element["voltages"], channels_x),
         )
 
 
@@ -335,7 +307,7 @@ class SymbolRegistry:
 
 
 class CSTAdapter(Adapter):
-    """Compile detector+simulator configs into CST monolithic macro artifacts."""
+    """Compile detector+simulator configs into monolithic CST macro"""
 
     name = "cst"
 
@@ -371,7 +343,7 @@ class CSTAdapter(Adapter):
             "voltage_calls": ctx["voltage_calls"],
             "mesh_box_count": len(ctx["mesh_boxes"]),
             "monitor_count": len(ctx["monitors"]),
-            "postprocess": variant.sim.get("postprocess", {}),
+            "postprocess": variant.sim["postprocess"],
         }
         manifest_path = output_dir / "compile_manifest.json"
         manifest_path.write_text(json.dumps(compile_manifest, indent=2))
@@ -395,56 +367,57 @@ class CSTAdapter(Adapter):
         run_ns = sanitize_vba_identifier(variant.run_id)
         symbol_registry = SymbolRegistry()
 
-        units = sim.get("units", {"length": "m", "voltage": "V", "time": "ns"})
-        boundary = sim.get("boundary", "open")
-        mesh_cfg = sim.get("mesh", {})
-        mesh_step_mm = float(mesh_cfg.get("step_mm", 1.0))
-        mesh_buffer_mm = float(mesh_cfg.get("buffer_mm", 0.0))
+        units = sim["units"]
+        boundary = sim["boundary"]
+        mesh_cfg = sim["mesh"]
+        mesh_step_mm = float(mesh_cfg["step_mm"])
+        mesh_buffer_mm = float(mesh_cfg["buffer_mm"])
         mesh_step_m = m_from_mm(mesh_step_mm)
         mesh_buffer_m = m_from_mm(mesh_buffer_mm)
 
+        fields_cfg = sim["fields"]
         fields = {
-            "magnetrun": bool(sim.get("fields", {}).get("magnetrun", False)),
-            "computeE": bool(sim.get("fields", {}).get("computeE", True)),
-            "computeB": bool(sim.get("fields", {}).get("computeB", False)),
-            "importE": bool(sim.get("fields", {}).get("importE", False)),
-            "importB": bool(sim.get("fields", {}).get("importB", True)),
-            "b_field_file": sim.get("fields", {}).get("b_field_file", ""),
-            "e_field_file": sim.get("fields", {}).get("e_field_file", ""),
+            "magnetrun": bool(fields_cfg["magnetrun"]),
+            "computeE": bool(fields_cfg["computeE"]),
+            "computeB": bool(fields_cfg["computeB"]),
+            "importE": bool(fields_cfg["importE"]),
+            "importB": bool(fields_cfg["importB"]),
+            "b_field_file": fields_cfg["b_field_file"],
+            "e_field_file": fields_cfg["e_field_file"],
         }
+        tracking_cfg = sim["tracking"]
         tracking = {
-            "method": sim.get("tracking", {}).get("method", "Hexahedral"),
-            "sim_time_ns": sim.get("tracking", {}).get("sim_time_ns", 5),
-            "iterations": sim.get("tracking", {}).get("iterations", 1000),
-            "neglect_space_charge": bool(sim.get("tracking", {}).get("neglect_space_charge", False)),
-            "neglect_PEC_charging": bool(sim.get("tracking", {}).get("neglect_PEC_charging", True)),
-            "threads": int(sim.get("tracking", {}).get("threads", 48)),
-            "distributed": bool(sim.get("tracking", {}).get("distributed", False)),
-            "traj_sampling": sim.get("tracking", {}).get(
-                "traj_sampling", {"freq": 100, "per_mesh": 100, "save": False}
-            ),
+            "method": tracking_cfg["method"],
+            "sim_time_ns": tracking_cfg["sim_time_ns"],
+            "iterations": tracking_cfg["iterations"],
+            "neglect_space_charge": bool(tracking_cfg["neglect_space_charge"]),
+            "neglect_PEC_charging": bool(tracking_cfg["neglect_PEC_charging"]),
+            "threads": int(tracking_cfg["threads"]),
+            "distributed": bool(tracking_cfg["distributed"]),
+            "traj_sampling": tracking_cfg["traj_sampling"],
         }
+        solvers_cfg = sim["solvers"]
         solvers = {
-            "e_static_accuracy": sim.get("solvers", {}).get("e_static_accuracy", "1e-12"),
-            "m_static_accuracy": sim.get("solvers", {}).get("m_static_accuracy", "1e-12"),
-            "max_threads": int(sim.get("solvers", {}).get("max_threads", 48)),
-            "max_cpu_devices": int(sim.get("solvers", {}).get("max_cpu_devices", 4)),
+            "e_static_accuracy": solvers_cfg["e_static_accuracy"],
+            "m_static_accuracy": solvers_cfg["m_static_accuracy"],
+            "max_threads": int(solvers_cfg["max_threads"]),
+            "max_cpu_devices": int(solvers_cfg["max_cpu_devices"]),
         }
-        toggles = sim.get("toggles", {})
+        toggles = sim["toggles"]
 
-        exclusions = sim.get("exclusions", {"solids": [], "coils": []})
-        monitors = list(sim.get("monitors", []))
-        postprocess = sim.get("postprocess", {})
+        exclusions = sim["exclusions"]
+        monitors = list(sim["monitors"])
+        postprocess = sim["postprocess"]
 
-        background = sim.get("background", {})
-        background_xy = float(background.get("xy_mm", 100.0))
-        background_zmin = float(background.get("zmin_mm", 100.0))
-        background_zmax = float(background.get("zmax_mm", 100.0))
+        background = sim["background"]
+        background_xy = float(background["xy_mm"])
+        background_zmin = float(background["zmin_mm"])
+        background_zmax = float(background["zmax_mm"])
 
-        profile_cfg = detector.get("profiles", {}).get("bx", {})
+        profile_cfg = detector["profiles"]["bx"]
         config_dir = Path(detector["__config_dir"]) if "__config_dir" in detector else None
         bx_interp = load_bx_profile(profile_cfg, base_dir=config_dir)
-        constants = {k: float(v) for k, v in detector.get("constants", {}).items()}
+        constants = {k: float(v) for k, v in detector["constants"].items()}
 
         context: Dict[str, Any] = {
             "run_id": variant.run_id,
@@ -458,14 +431,14 @@ class CSTAdapter(Adapter):
             "toggles": toggles,
             "monitors": monitors,
             "exclusions": {
-                "solids": list(exclusions.get("solids", [])),
-                "coils": list(exclusions.get("coils", [])),
+                "solids": list(exclusions["solids"]),
+                "coils": list(exclusions["coils"]),
             },
             "postprocess": postprocess,
             "background_buffer_xy_m": m_from_mm(background_xy),
             "background_buffer_zmin_m": m_from_mm(background_zmin),
             "background_buffer_zmax_m": m_from_mm(background_zmax),
-            "max_time_steps": int(sim.get("max_time_steps", 100000000)),
+            "max_time_steps": int(sim["max_time_steps"]),
             "components": ["mesh"],
             "build_calls": [],
             "voltage_calls": [],
@@ -473,15 +446,15 @@ class CSTAdapter(Adapter):
             "filter_elements": [],
             "parallel_drains": [],
             "targets": [],
-            "target_backplates": [],
             "einzel_lenses": [],
             "analyzers": [],
             "magnets": [],
             "particles": {"singles": [], "rings": []},
         }
 
+        filter_element_defaults = detector.get("filter_element_defaults", {})
         target_ref_for_sources: Optional[Dict[str, Any]] = None
-        geometry = detector.get("geometry", [])
+        geometry = detector["geometry"]
         for element in geometry:
             etype = element["type"]
             element_id = str(element["id"])
@@ -494,12 +467,12 @@ class CSTAdapter(Adapter):
                     {
                         "id": element_id,
                         "ns": ns,
-                        "component": element.get("component", "magnet"),
-                        "material": element.get("material", "Iron-PEC"),
+                        "component": element["component"],
+                        "material": element["material"],
                         "build_sub": build_sub,
                     }
                 )
-                context["components"].append(element.get("component", "magnet"))
+                context["components"].append(element["component"])
                 context["build_calls"].append(build_sub)
                 continue
 
@@ -509,16 +482,16 @@ class CSTAdapter(Adapter):
                 symbol_registry.add(build_sub, kind="subroutine")
                 symbol_registry.add(apply_sub, kind="subroutine")
 
-                center_x = float(element.get("center_x_m", -0.253))
-                center_z = float(element.get("center_z_m", -1.302))
-                rotation_deg = float(element.get("rotation_deg", 74.07))
-                magnet_radius = float(element.get("magnet_radius_m", 0.01))
-                magnet_height = float(element.get("magnet_height_m", 0.005))
-                thickness = float(element.get("thickness_m", 0.001))
-                remanence = float(element.get("remanence_T", 15 * 0.1017))
+                center_x = float(element["center_x_m"])
+                center_z = float(element["center_z_m"])
+                rotation_deg = float(element["rotation_deg"])
+                magnet_radius = float(element["magnet_radius_m"])
+                magnet_height = float(element["magnet_height_m"])
+                thickness = float(element["thickness_m"])
+                remanence = float(element["remanence_T"])
                 voltages = {
-                    "inner": float(element.get("voltage_inner", 18600)),
-                    "catcher": float(element.get("voltage_catcher", 19000)),
+                    "inner": float(element["voltage_inner"]),
+                    "catcher": float(element["voltage_catcher"]),
                 }
 
                 r_max = magnet_radius + 8 * thickness
@@ -539,7 +512,7 @@ class CSTAdapter(Adapter):
                 target_ctx = {
                     "id": element_id,
                     "ns": ns,
-                    "component": element.get("component", "target"),
+                    "component": element["component"],
                     "build_sub": build_sub,
                     "apply_sub": apply_sub,
                     "center_x": center_x,
@@ -566,42 +539,21 @@ class CSTAdapter(Adapter):
                 )
                 continue
 
-            if etype == "target_backplate_cutout":
-                build_sub = f"Build_{ns}"
-                symbol_registry.add(build_sub, kind="subroutine")
-                component = element.get("component", "target")
-                entry = {
-                    "id": element_id,
-                    "ns": ns,
-                    "component": component,
-                    "build_sub": build_sub,
-                    "catchz": float(element.get("catchz_m", -1.302)),
-                    "filter_half_x": float(element.get("filter_dimension_half_x_m", 0.055)),
-                    "filter_half_y": float(element.get("filter_dimension_half_y_m", 0.06)),
-                    "electrode_thickness": float(element.get("electrode_thickness_m", 0.001)),
-                    "bring_cutout_y": float(element.get("bring_cutout_y_m", 0.01)),
-                    "bring_cutout_z": float(element.get("bring_cutout_z_m", -1.1)),
-                }
-                context["target_backplates"].append(entry)
-                context["components"].append(component)
-                context["build_calls"].append(build_sub)
-                continue
-
             if etype == "einzel_lens":
                 build_sub = f"Build_{ns}"
                 apply_sub = f"Apply_{ns}"
                 symbol_registry.add(build_sub, kind="subroutine")
                 symbol_registry.add(apply_sub, kind="subroutine")
 
-                lengths_m = [float(v) / 1000.0 for v in element.get("lengths_mm", [])]
-                potentials = [float(v) for v in element.get("potentials", [])]
+                lengths_m = [float(v) / 1000.0 for v in element["lengths_mm"]]
+                potentials = [float(v) for v in element["potentials"]]
                 if len(lengths_m) != len(potentials):
                     raise ValueError(f"einzel_lens '{element_id}' lengths_mm and potentials length mismatch")
 
-                gap_m = float(element.get("gap_m", 0.001))
-                inner_r = float(element.get("inner_radius_m", 0.005))
-                wall = float(element.get("wall_thickness_m", 0.001))
-                start_z = float(element.get("start_z_m", 0.0))
+                gap_m = float(element["gap_m"])
+                inner_r = float(element["inner_radius_m"])
+                wall = float(element["wall_thickness_m"])
+                start_z = float(element["start_z_m"])
 
                 cylinders = []
                 z_curr = start_z
@@ -633,7 +585,7 @@ class CSTAdapter(Adapter):
                 lens_ctx = {
                     "id": element_id,
                     "ns": ns,
-                    "component": element.get("component", "einzel"),
+                    "component": element["component"],
                     "build_sub": build_sub,
                     "apply_sub": apply_sub,
                     "cylinders": cylinders,
@@ -662,19 +614,17 @@ class CSTAdapter(Adapter):
                 inner_r = float(element["inner_radius_m"])
                 center_r = float(element["center_radius_m"])
                 outer_r = float(element["outer_radius_m"])
-                pcb_thk = float(element.get("pcb_thickness_m", 0.001))
-                shell_thk = float(element.get("shell_thickness_m", 0.001))
+                pcb_thk = float(element["pcb_thickness_m"])
+                shell_thk = float(element["shell_thickness_m"])
                 outer_shell_r = outer_r + shell_thk
-                x_span = element.get("x_span_m", [-0.08, 0.08])
-                y_span = element.get("y_span_m", [-0.07, 0.15])
-                slit_in = element.get("entrance_slit_mm", [1.0, 8.0])
-                slit_out = element.get("exit_slit_mm", [20.0, 6.0])
-                voltages = element.get("voltages", {"inner": -500, "outer": 0})
+                x_span = element["x_span_m"]
+                y_span = element["y_span_m"]
+                slit_in = element["entrance_slit_mm"]
+                slit_out = element["exit_slit_mm"]
+                voltages = element["voltages"]
 
                 center_y = center_r
-                center_z = float(element.get("center_z_m", 0.0))
-                if center_z == 0.0 and context["einzel_lenses"]:
-                    center_z = context["einzel_lenses"][-1]["exit_z"] + pcb_thk
+                center_z = float(element["center_z_m"])
 
                 plate_z1 = center_z - pcb_thk
                 plate_z2 = center_z
@@ -690,7 +640,7 @@ class CSTAdapter(Adapter):
                 analyzer_ctx = {
                     "id": element_id,
                     "ns": ns,
-                    "component": element.get("component", "analyzer"),
+                    "component": element["component"],
                     "build_sub": build_sub,
                     "apply_sub": apply_sub,
                     "inner_r": inner_r,
@@ -788,7 +738,7 @@ class CSTAdapter(Adapter):
                 symbol_registry.add(build_sub, kind="subroutine")
                 symbol_registry.add(apply_sub, kind="subroutine")
 
-                section = FilterSection.from_geometry(element)
+                section = FilterSection.from_geometry(element, filter_element_defaults)
                 filter_ctx = self._build_filter_element(
                     section=section,
                     mesh_buffer_mm=int(mesh_buffer_mm),
@@ -799,7 +749,7 @@ class CSTAdapter(Adapter):
                 filter_ctx.update(
                     {
                         "id": element_id,
-                        "component": element.get("component", section.component),
+                        "component": element["component"],
                         "ns": ns,
                         "build_sub": build_sub,
                         "apply_sub": apply_sub,
@@ -820,7 +770,7 @@ class CSTAdapter(Adapter):
                 continue
 
         context["particles"] = collect_particles(
-            detector.get("sources", {}), target_ref_for_sources, mesh_buffer_m, run_ns
+            detector["sources"], target_ref_for_sources, mesh_buffer_m, run_ns
         )
 
         unique_components: list[str] = []
@@ -835,27 +785,27 @@ class CSTAdapter(Adapter):
         return context
 
     def _build_parallel_drain(self, cfg: Dict[str, Any], mesh_buffer_m: float, namespace: str) -> Dict[str, Any]:
-        angles = cfg.get("angles_deg", [])
-        potentials = cfg.get("potentials", [])
+        angles = cfg["angles_deg"]
+        potentials = cfg["potentials"]
         if len(angles) < 2 or len(potentials) != len(angles) - 1:
             raise ValueError("parallel_drain requires angles_deg>=2 and matching potentials")
 
-        angle_gap = float(cfg.get("angle_gap_deg", 0.0))
-        center_x = float(cfg.get("ellipse_center", {}).get("x_m", 0.0))
-        center_z = float(cfg.get("ellipse_center", {}).get("z_m", -1.302))
-        axes = cfg.get("axes_m", {})
-        a = float(axes.get("a_m", 0.2482))
-        b = float(axes.get("b_m", 0.2248))
-        offsets = cfg.get("offsets_m", {})
-        inner = float(offsets.get("inner", 0.04))
-        outer = float(offsets.get("outer", 0.03))
-        y_at = float(cfg.get("y_at_plate_m", 0.020))
-        thickness = float(cfg.get("electrode_thickness_m", 0.001))
-        component = cfg.get("component", "parallel_drain")
-        face_number = str(cfg.get("face_number", 11))
-        x_half = float(cfg.get("x_half_m", 0.055))
-        y_half = float(cfg.get("y_half_m", abs(y_at)))
-        cutout_z_span = cfg.get("cutout_z_span_m", [center_z - 0.5, center_z])
+        angle_gap = float(cfg["angle_gap_deg"])
+        center_x = float(cfg["ellipse_center"]["x_m"])
+        center_z = float(cfg["ellipse_center"]["z_m"])
+        axes = cfg["axes_m"]
+        a = float(axes["a_m"])
+        b = float(axes["b_m"])
+        offsets = cfg["offsets_m"]
+        inner = float(offsets["inner"])
+        outer = float(offsets["outer"])
+        y_at = float(cfg["y_at_plate_m"])
+        thickness = float(cfg["electrode_thickness_m"])
+        component = cfg["component"]
+        face_number = str(cfg["face_number"])
+        x_half = float(cfg["x_half_m"])
+        y_half = float(cfg["y_half_m"])
+        cutout_z_span = cfg["cutout_z_span_m"]
 
         def point_at(theta_deg: float, radial_delta: float) -> Tuple[float, float]:
             theta = math.radians(theta_deg)
@@ -906,7 +856,7 @@ class CSTAdapter(Adapter):
         return {
             "component": component,
             "curve": f"{namespace}_curve",
-            "material": cfg.get("material", "PEC"),
+            "material": cfg["material"],
             "arcs": arcs,
             "x_half": x_half,
             "y_half": y_half,
@@ -930,27 +880,6 @@ class CSTAdapter(Adapter):
         y_half_mm = section.y_half_mm
         z_start_mm = section.z_start_mm
         z_end_mm = section.z_end_mm
-        end_gap_mm = max(0, section.end_gap_mm)
-
-        def resolve_range(start_override: Optional[int], end_override: Optional[int], label: str) -> Tuple[int, int]:
-            zs = start_override if start_override is not None else z_start_mm
-            ze = end_override if end_override is not None else z_end_mm
-            if ze <= zs:
-                raise ValueError(f"{label} z_end must exceed z_start")
-            return zs, ze
-
-        bounce_xpos_start, bounce_xpos_end_raw = resolve_range(
-            section.bounce_xpos_z_start_mm, section.bounce_xpos_z_end_mm, "bounce_xpos"
-        )
-        bounce_xneg_start, bounce_xneg_end_raw = resolve_range(
-            section.bounce_xneg_z_start_mm, section.bounce_xneg_z_end_mm, "bounce_xneg"
-        )
-        channel_ypos_start, channel_ypos_end_raw = resolve_range(
-            section.channel_ypos_z_start_mm, section.channel_ypos_z_end_mm, "channel_ypos"
-        )
-        channel_yneg_start, channel_yneg_end_raw = resolve_range(
-            section.channel_yneg_z_start_mm, section.channel_yneg_z_end_mm, "channel_yneg"
-        )
 
         bricks: List[BrickSpec] = []
         potentials: List[PotentialSpec] = []
@@ -964,8 +893,8 @@ class CSTAdapter(Adapter):
                     x2=fmt_m(x_half_mm + pcb_thick_mm),
                     y1=fmt_m(-y_half_mm),
                     y2=fmt_m(y_half_mm),
-                    z1=fmt_m(bounce_xpos_start),
-                    z2=fmt_m(bounce_xpos_end_raw),
+                    z1=fmt_m(z_start_mm),
+                    z2=fmt_m(z_end_mm),
                 ),
                 BrickSpec(
                     name=f"{namespace}_pcb_bounce_xneg",
@@ -974,8 +903,8 @@ class CSTAdapter(Adapter):
                     x2=fmt_m(-x_half_mm),
                     y1=fmt_m(-y_half_mm),
                     y2=fmt_m(y_half_mm),
-                    z1=fmt_m(bounce_xneg_start),
-                    z2=fmt_m(bounce_xneg_end_raw),
+                    z1=fmt_m(z_start_mm),
+                    z2=fmt_m(z_end_mm),
                 ),
                 BrickSpec(
                     name=f"{namespace}_pcb_channel_ypos",
@@ -984,8 +913,8 @@ class CSTAdapter(Adapter):
                     x2=fmt_m(x_half_mm),
                     y1=fmt_m(y_half_mm),
                     y2=fmt_m(y_half_mm + pcb_thick_mm),
-                    z1=fmt_m(channel_ypos_start),
-                    z2=fmt_m(channel_ypos_end_raw),
+                    z1=fmt_m(z_start_mm),
+                    z2=fmt_m(z_end_mm),
                 ),
                 BrickSpec(
                     name=f"{namespace}_pcb_channel_yneg",
@@ -994,13 +923,13 @@ class CSTAdapter(Adapter):
                     x2=fmt_m(x_half_mm),
                     y1=fmt_m(-y_half_mm - pcb_thick_mm),
                     y2=fmt_m(-y_half_mm),
-                    z1=fmt_m(channel_yneg_start),
-                    z2=fmt_m(channel_yneg_end_raw),
+                    z1=fmt_m(z_start_mm),
+                    z2=fmt_m(z_end_mm),
                 ),
             ]
         )
 
-        if section.backplate_pcb:
+        if section.include_termination_backplate:
             bricks.append(
                 BrickSpec(
                     name=f"{namespace}_pcb_backplate",
@@ -1026,16 +955,22 @@ class CSTAdapter(Adapter):
         eval_ctx: Dict[str, Any] = dict(constants)
         eval_ctx["bx_norm"] = bx_interp
 
-        bounce_xpos_end = bounce_xpos_end_raw - end_gap_mm
-        bounce_xneg_end = bounce_xneg_end_raw - end_gap_mm
+        unit_mm = section.electrode_len_mm + section.electrode_gap_mm
+        filter_start_z_mm = z_start_mm - section.n_start * unit_mm
 
-        seg_bxp = build_segments(bounce_xpos_start, bounce_xpos_end, section.electrode_len_mm, section.electrode_gap_mm)
-        seg_bxn = build_segments(bounce_xneg_start, bounce_xneg_end, section.electrode_len_mm, section.electrode_gap_mm)
+        def _z_lookup(electrode_n: int) -> float:
+            z_mid_mm = filter_start_z_mm + electrode_n * unit_mm + section.electrode_len_mm / 2.0
+            return z_mid_mm / 1000.0
+
+        eval_ctx["z"] = _z_lookup
+
+        seg_bxp = build_segments(z_start_mm, z_end_mm, section.electrode_len_mm, section.electrode_gap_mm)
+        seg_bxn = build_segments(z_start_mm, z_end_mm, section.electrode_len_mm, section.electrode_gap_mm)
 
         for idx, (z0_mm, length_mm) in enumerate(seg_bxp):
             z1_mm, z2_mm = z0_mm, z0_mm + length_mm
-            z_center_m = (z1_mm + z2_mm) / 2000.0
-            val = eval_expr(section.voltages.bounce_xpos, z_center_m, eval_ctx)
+            global_n = section.n_start + idx
+            val = eval_expr(section.voltages.bounce_xpos, global_n, eval_ctx)
             shape = f"{namespace}_bounce_xpos_{idx}"
             bricks.append(
                 BrickSpec(
@@ -1060,8 +995,8 @@ class CSTAdapter(Adapter):
 
         for idx, (z0_mm, length_mm) in enumerate(seg_bxn):
             z1_mm, z2_mm = z0_mm, z0_mm + length_mm
-            z_center_m = (z1_mm + z2_mm) / 2000.0
-            val = eval_expr(section.voltages.bounce_xneg, z_center_m, eval_ctx)
+            global_n = section.n_start + idx
+            val = eval_expr(section.voltages.bounce_xneg, global_n, eval_ctx)
             shape = f"{namespace}_bounce_xneg_{idx}"
             bricks.append(
                 BrickSpec(
@@ -1098,10 +1033,8 @@ class CSTAdapter(Adapter):
         else:
             widths_mm = distribute_widths(available_width_mm, channels_x)
 
-        channel_ypos_end = channel_ypos_end_raw - end_gap_mm
-        channel_yneg_end = channel_yneg_end_raw - end_gap_mm
-        seg_cyp = build_segments(channel_ypos_start, channel_ypos_end, section.electrode_len_mm, section.electrode_gap_mm)
-        seg_cyn = build_segments(channel_yneg_start, channel_yneg_end, section.electrode_len_mm, section.electrode_gap_mm)
+        seg_cyp = build_segments(z_start_mm, z_end_mm, section.electrode_len_mm, section.electrode_gap_mm)
+        seg_cyn = build_segments(z_start_mm, z_end_mm, section.electrode_len_mm, section.electrode_gap_mm)
 
         y_pos_mm = y_half_mm - electrode_offset_mm
         y_neg_mm = -y_half_mm + electrode_offset_mm
@@ -1118,9 +1051,9 @@ class CSTAdapter(Adapter):
 
             for seg_idx, (z0_mm, length_mm) in enumerate(seg_cyp):
                 z1_mm, z2_mm = z0_mm, z0_mm + length_mm
-                z_center_m = (z1_mm + z2_mm) / 2000.0
+                global_n = section.n_start + seg_idx
                 eval_ctx["chan"] = chan_idx
-                value = eval_expr(pos_expr, z_center_m, eval_ctx)
+                value = eval_expr(pos_expr, global_n, eval_ctx)
                 shape = f"{namespace}_channel_ypos_{chan_idx}_{seg_idx}"
                 bricks.append(
                     BrickSpec(
@@ -1145,9 +1078,9 @@ class CSTAdapter(Adapter):
 
             for seg_idx, (z0_mm, length_mm) in enumerate(seg_cyn):
                 z1_mm, z2_mm = z0_mm, z0_mm + length_mm
-                z_center_m = (z1_mm + z2_mm) / 2000.0
+                global_n = section.n_start + seg_idx
                 eval_ctx["chan"] = chan_idx
-                value = eval_expr(neg_expr, z_center_m, eval_ctx)
+                value = eval_expr(neg_expr, global_n, eval_ctx)
                 shape = f"{namespace}_channel_yneg_{chan_idx}_{seg_idx}"
                 bricks.append(
                     BrickSpec(
@@ -1170,22 +1103,15 @@ class CSTAdapter(Adapter):
                     )
                 )
 
-        z_min_candidates = [bounce_xpos_start, bounce_xneg_start, channel_ypos_start, channel_yneg_start]
-        z_max_candidates = [
-            bounce_xpos_end_raw,
-            bounce_xneg_end_raw,
-            channel_ypos_end_raw,
-            channel_yneg_end_raw,
-            z_end_mm + pcb_thick_mm if section.backplate_pcb else z_end_mm,
-        ]
+        z_max = z_end_mm + pcb_thick_mm if section.include_termination_backplate else z_end_mm
 
         mesh_bounds = {
             "x_min": fmt_m(-x_half_mm - pcb_thick_mm - mesh_buffer_mm),
             "x_max": fmt_m(x_half_mm + pcb_thick_mm + mesh_buffer_mm),
             "y_min": fmt_m(-y_half_mm - pcb_thick_mm - mesh_buffer_mm),
             "y_max": fmt_m(y_half_mm + pcb_thick_mm + mesh_buffer_mm),
-            "z_min": fmt_m(min(z_min_candidates) - mesh_buffer_mm),
-            "z_max": fmt_m(max(z_max_candidates) + mesh_buffer_mm),
+            "z_min": fmt_m(z_start_mm - mesh_buffer_mm),
+            "z_max": fmt_m(z_max + mesh_buffer_mm),
         }
 
         return {"bricks": bricks, "potentials": potentials, "mesh_bounds": mesh_bounds}
@@ -1201,10 +1127,10 @@ def collect_particles(
     rings: List[Dict[str, Any]] = []
 
     if target_ctx:
-        rotation = float(target_ctx.get("rotation_deg", 0.0))
+        rotation = float(target_ctx["rotation_deg"])
         n = (math.cos(math.radians(rotation)), 0.0, -math.sin(math.radians(rotation)))
-        target_center = (float(target_ctx.get("center_x", 0.0)), 0.0, float(target_ctx.get("center_z", 0.0)))
-        target_offset = float(target_ctx.get("thickness", 0.0))
+        target_center = (float(target_ctx["center_x"]), 0.0, float(target_ctx["center_z"]))
+        target_offset = float(target_ctx["thickness"])
     else:
         n = (0.0, 0.0, -1.0)
         target_center = (0.0, 0.0, 0.0)
@@ -1233,18 +1159,18 @@ def collect_particles(
         target_center[2] + target_offset * n[2],
     )
 
-    for idx, single in enumerate(pcfg.get("singles", [])):
+    for idx, single in enumerate(pcfg["singles"]):
         pitches = pitch_list_from_cfg(single)
         phis = phi_list_from_cfg(single)
-        energy = float(single.get("energy_eV", 18600))
-        on_target = bool(single.get("on_target_face", True))
+        energy = float(single["energy_eV"])
+        on_target = bool(single["on_target_face"])
         if on_target:
             origin = default_origin
         else:
-            origin_m = single.get("origin_m", [target_center[0], 0.0, target_center[2]])
+            origin_m = single["origin_m"]
             origin = (float(origin_m[0]), float(origin_m[1]), float(origin_m[2]))
 
-        name_prefix = single.get("name_prefix", "p")
+        name_prefix = single["name_prefix"]
         for pitch_deg in pitches:
             for phi_deg in phis:
                 p_rad = math.radians(pitch_deg)
@@ -1266,22 +1192,22 @@ def collect_particles(
                     }
                 )
 
-    for idx, ring in enumerate(pcfg.get("rings", [])):
-        radii = ring.get("radii_m", [])
-        inner = float(ring.get("inner_radius_m", 0.0))
-        lines = int(ring.get("lines", 32))
-        pitch = float(ring.get("pitch_deg", 0.0))
-        pitch_spread = float(ring.get("pitch_spread_deg", 0.0))
-        phi = float(ring.get("phi_deg", 0.0))
-        energy = float(ring.get("energy_eV", 18600))
-        on_target = bool(ring.get("on_target_face", True))
+    for idx, ring in enumerate(pcfg["rings"]):
+        radii = ring["radii_m"]
+        inner = float(ring["inner_radius_m"])
+        lines = int(ring["lines"])
+        pitch = float(ring["pitch_deg"])
+        pitch_spread = float(ring["pitch_spread_deg"])
+        phi = float(ring["phi_deg"])
+        energy = float(ring["energy_eV"])
+        on_target = bool(ring["on_target_face"])
         if on_target:
             center_point = default_origin
         else:
-            origin_m = ring.get("origin_m", [target_center[0], 0.0, target_center[2]])
+            origin_m = ring["origin_m"]
             center_point = (float(origin_m[0]), float(origin_m[1]), float(origin_m[2]))
 
-        name_prefix = ring.get("name_prefix", "ring")
+        name_prefix = ring["name_prefix"]
         for radius_idx, radius in enumerate(radii):
             inner_use = inner
             if abs(pitch) > 1e-9 and inner_use <= 0.0:
