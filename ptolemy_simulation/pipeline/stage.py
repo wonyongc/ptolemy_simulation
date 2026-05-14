@@ -234,27 +234,11 @@ summary_job=$(sbatch --parsable --dependency=afterany:${{array_job}} summary.slu
 echo \"summary_job=$summary_job\"
 """
 
-    result_sync = run_cfg.get("result_sync", {}) if isinstance(run_cfg.get("result_sync", {}), dict) else {}
-    patterns = result_sync.get("patterns", ["*.txt", "*.npz", "*.png"])
-    include_lines = "\n".join(f"--include='{pattern}' \\" for pattern in patterns)
-
-    fetch = f"""#!/bin/bash
-set -euo pipefail
-REMOTE=\"{run_cfg.get('user', os.environ.get('USER', ''))}@{run_cfg['host']}:{remote_root}\"
-LOCAL=\"{result_sync.get('local_dir', f'generated/studies/{study_name}/fetched')}\"
-mkdir -p \"$LOCAL\"
-rsync -av --prune-empty-dirs --include='*/' \\
-{include_lines}
---exclude='*' \"$REMOTE/\" \"$LOCAL/\"
-"""
-
     return {
         "prep.sh": prep,
         "array.slurm": array,
         "summary.slurm": summary,
         "submit.sh": submit_script,
-        "fetch_results.sh": fetch,
-        "fetch_enabled": "true" if bool(result_sync.get("enabled", False)) else "false",
         "submit_enabled": "true" if submit else "false",
     }
 
@@ -288,7 +272,7 @@ def stage_della(
     scripts = _render_remote_scripts(study_name, run_cfg, rows)
     script_paths: Dict[str, str] = {}
     for name, content in scripts.items():
-        if name in {"submit_enabled", "fetch_enabled"}:
+        if name in {"submit_enabled"}:
             continue
         path = della_dir / name
         path.write_text(content)
@@ -334,7 +318,6 @@ def stage_della(
         "remote_root": remote_root,
         "host": host,
         "submitted": bool(run_cfg.get("submit", False)) and not dry_run,
-        "result_sync_enabled": bool(run_cfg.get("result_sync", {}).get("enabled", False)),
         "dry_run": dry_run,
         "copied": copied,
         "rows": [

@@ -179,11 +179,6 @@ def validate_run(data: Dict[str, Any]) -> Dict[str, Any]:
     if mode not in {"local", "della"}:
         raise ValidationError("mode must be 'local' or 'della'", path="run.mode")
 
-    payload.setdefault("result_sync", {"enabled": False, "patterns": ["*.txt", "*.npz", "*.png"]})
-    payload["result_sync"] = _require_mapping(payload["result_sync"], "run.result_sync")
-    payload["result_sync"].setdefault("enabled", False)
-    payload["result_sync"].setdefault("patterns", ["*.txt", "*.npz", "*.png"])
-
     if mode == "local":
         _require_keys(payload, ["template_zip", "project_root", "unpack_dir"], "run")
         payload.setdefault("stage_only", True)

@@ -59,7 +59,19 @@ def test_stage_della_dry_run_writes_scripts(tmp_path: Path) -> None:
     assert manifest.exists()
     payload = json.loads(manifest.read_text())
     assert payload["mode"] == "della"
+    assert set(payload) == {
+        "mode",
+        "study_name",
+        "remote_root",
+        "host",
+        "submitted",
+        "dry_run",
+        "copied",
+        "rows",
+        "scripts",
+    }
     assert (manifest.parent / "della" / "runs.tsv").exists()
+    assert set(payload["scripts"]) == {"prep.sh", "array.slurm", "summary.slurm", "submit.sh"}
     runs_tsv = (manifest.parent / "della" / "runs.tsv").read_text().strip()
     assert runs_tsv == "0\trun-0000\trun-0000.build.mcs\trun-0000.run.mcr"
     array_script = (manifest.parent / "della" / "array.slurm").read_text()

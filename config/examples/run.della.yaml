@@ -2,8 +2,8 @@ schema_version: "1.0"
 mode: della
 host: della.princeton.edu
 user: wonyongc
-project_root: /scratch/gpfs/CGTULLY/wonyongc/ptolemy/runs
-template_zip: /home/wonyongc/src/ptolemy/cst_template.zip
+project_root: /scratch/gpfs/CGTULLY/ptolemy/cst/runs
+template_zip: /scratch/gpfs/CGTULLY/ptolemy/cst/cst_template.zip
 cst_bin: /usr/licensed/Dassault/CST_Studio_Suite_2024/cst_design_environment
 slurm:
   cpus: 6
@@ -12,6 +12,3 @@ slurm:
   mail_user: wonyongc@princeton.edu
 submit: false
 auto_postprocess: true
-result_sync:
-  enabled: false
-  patterns: ["*.txt", "*.npz", "*.png"]

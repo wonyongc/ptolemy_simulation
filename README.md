@@ -36,7 +36,7 @@ What this does:
 4. Stages project files into your local CST run folder
 
 For the default local config, staged files go under:
-- `/mnt/c/Users/<user>/ptolemy/ptx/runs/<study_name>/`
+- `./runs/<study_name>/`
 
 ## Run Inside CST
 Open the staged `.cst` file in CST, then run macro:

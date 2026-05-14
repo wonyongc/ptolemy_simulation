@@ -19,7 +19,7 @@ fields:
   computeB: false
   importE: false
   importB: true
-  b_field_file: "/scratch/gpfs/CGTULLY/wonyongc/ptolemy/magnet_runs/lngs_3perm_asym.cst"
+  b_field_file: "/scratch/gpfs/CGTULLY/ptolemy/cst/magnet_runs/lngs_3perm_asym.cst"
   e_field_file: ""
 tracking:
   method: Hexahedral

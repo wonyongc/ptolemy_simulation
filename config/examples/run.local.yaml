@@ -1,9 +1,6 @@
 schema_version: "1.0"
 mode: local
-template_zip: /home/wonyongc/src/ptolemy/ptolemy_simulation_ptx/PTOLEMY_CST_TEMPLATE.zip
-project_root: /mnt/c/Users/wonyongc/ptolemy/ptx/runs
-unpack_dir: /home/wonyongc/src/ptolemy/ptolemy_simulation_ptx/.cst_unpack
+template_zip: ../../PTOLEMY_CST_TEMPLATE.zip
+project_root: ../../runs
+unpack_dir: ../../.cst_unpack
 stage_only: false
-result_sync:
-  enabled: false
-  patterns: ["*.txt", "*.npz", "*.png"]
